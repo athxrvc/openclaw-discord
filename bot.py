@@ -3,6 +3,7 @@ import requests
 import discord
 
 from dotenv import load_dotenv
+from channel_modes import get_channel_mode
 
 load_dotenv()
 
