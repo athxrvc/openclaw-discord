@@ -18,7 +18,6 @@ client = discord.Client(intents=intents)
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
 
-# ✅ UPDATED: now supports system prompt
 def ask_ollama(prompt, system_prompt):
     full_prompt = f"""System:
 {system_prompt}
@@ -72,7 +71,6 @@ async def on_message(message):
         await message.channel.send("Usage: !ai <question>")
         return
 
-    # ✅ NEW: get channel-based system prompt
     channel_name = message.channel.name
     system_prompt = get_channel_mode(channel_name)
 
