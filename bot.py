@@ -3,6 +3,7 @@ import requests
 import discord
 
 from dotenv import load_dotenv
+from channel_modes import get_channel_mode
 
 load_dotenv()
 
@@ -17,12 +18,21 @@ client = discord.Client(intents=intents)
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
 
-def ask_ollama(prompt):
+def ask_ollama(prompt, system_prompt):
+    full_prompt = f"""System:
+{system_prompt}
+
+User:
+{prompt}
+
+Assistant:
+"""
+
     response = requests.post(
         OLLAMA_URL,
         json={
             "model": MODEL,
-            "prompt": prompt,
+            "prompt": full_prompt,
             "stream": False
         },
         timeout=300
@@ -44,14 +54,14 @@ async def on_message(message):
 
     content = message.content.strip()
 
-    # ✅ STATUS FIRST (so it always works)
+    # STATUS COMMAND
     if content == "!status":
         await message.channel.send(
             f"Model: {MODEL}\nBot: Online"
         )
         return
 
-    # ❌ Ignore non-ai messages
+    # AI COMMAND ONLY
     if not content.startswith("!ai"):
         return
 
@@ -61,9 +71,12 @@ async def on_message(message):
         await message.channel.send("Usage: !ai <question>")
         return
 
+    channel_name = message.channel.name
+    system_prompt = get_channel_mode(channel_name)
+
     try:
         async with message.channel.typing():
-            answer = ask_ollama(prompt)
+            answer = ask_ollama(prompt, system_prompt)
 
         if len(answer) > 1800:
             answer = answer[:1800] + "\n\n[truncated]"
