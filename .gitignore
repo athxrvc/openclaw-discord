@@ -2,3 +2,4 @@
 __pycache__/
 *.pyc
 .vscode/
+assets/enabled_channels.json

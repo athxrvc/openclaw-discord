@@ -20,7 +20,7 @@ Discord -> Python Bot -> Ollama -> Local Model -> Discord response.
 - Send images with your prompt for vision-capable models
 - Switch models per running session without restarting the bot
 - Channel-specific assistant behavior (`general`, `personal`, `code`, `bot-test`)
-- Simple command interface: `!ai`, `!status`, `!switch`
+- Simple command interface: `!status`, `!switch`, `!addchn`, `!removechn`
 - Lightweight Python implementation
 
 ## Architecture
@@ -86,9 +86,13 @@ python bot.py
 
 ## Commands
 
-### `!ai <prompt>`
+### AI messaging
 
-Sends a prompt to the current model.
+In AI-enabled channels, normal messages are sent directly to the model.
+You no longer need to prefix each message with `!ai`.
+
+`!ai <prompt>` still works everywhere as an explicit one-off prompt.
+
 If the message includes image attachments (`.png`, `.jpg`, `.jpeg`, `.webp`), the bot forwards them to Ollama for multimodal inference.
 
 Example:
@@ -112,6 +116,30 @@ Switch back to coder model:
 ```text
 !switch qwen2.5-coder:14b
 ```
+
+### `!addchn <channel_name>`
+
+Enables auto-AI for the given channel name. After this, normal messages in that channel are treated as prompts.
+
+Example:
+
+```text
+!addchn code
+```
+
+If no channel name is provided, the current channel is enabled.
+
+### `!removechn <channel_name>`
+
+Disables auto-AI for the given channel name. Messages in that channel will require `!ai` again.
+
+Example:
+
+```text
+!removechn code
+```
+
+If no channel name is provided, the current channel is disabled.
 
 ### `!status`
 
