@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from channel_modes import get_channel_mode
 
 load_dotenv()
+current_model = MODEL
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 MODEL = os.getenv("OLLAMA_MODEL")
@@ -59,6 +60,20 @@ async def on_message(message):
         await message.channel.send(
             f"Model: {MODEL}\nBot: Online"
         )
+        return
+    
+    global current_model
+    # SWITCH MODEL COMMAND
+    if content.startswitch("!switch"):
+        new_model = content[len("!switch"):].strip()
+
+        if not new_model:
+            await message.channel.send("Usage: !switch <model_name>")
+            return
+        
+        current_model = new_model
+
+        await message.channel.send(f"Switched model to: `{current_model}`")
         return
 
     # AI COMMAND ONLY
