@@ -1,4 +1,4 @@
-# OpenClaw Discord Bot (v1.2.0)
+# OpenClaw Discord Bot
 
 OpenClaw Discord Bot v2 is a local-first Discord assistant powered by Ollama.
 It supports both text and image workflows, channel-aware behavior, and runtime model switching.
@@ -6,7 +6,7 @@ It supports both text and image workflows, channel-aware behavior, and runtime m
 Pipeline:
 Discord -> Python Bot -> Ollama -> Local Model -> Discord response.
 
-## What is new in v1.2.0
+## What is new?
 
 - Multimodal support for image attachments in `!ai` prompts
 - Runtime model switching with `!switch <model_name>`
