@@ -32,7 +32,7 @@ Assistant:
     response = requests.post(
         OLLAMA_URL,
         json={
-            "model": MODEL,
+            "model": current_model,
             "prompt": full_prompt,
             "stream": False
         },
@@ -58,7 +58,7 @@ async def on_message(message):
     # STATUS COMMAND
     if content == "!status":
         await message.channel.send(
-            f"Model: {MODEL}\nBot: Online"
+            f"Model: {current_model}\nBot: Online"
         )
         return
     
