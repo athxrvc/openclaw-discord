@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .vscode/
 assets/enabled_channels.json
+setup_readme.md
+terraform/terraform.tfvars
+terraform/*.auto.tfvars
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform/
