@@ -6,24 +6,26 @@ import discord
 
 from dotenv import load_dotenv
 from channel_modes import get_channel_mode
+from db import get_connection
 
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 MODEL = os.getenv("OLLAMA_MODEL")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 
-# default model
 current_model = MODEL
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
-
-OLLAMA_URL = "http://localhost:11434/api/generate"
 ENABLED_CHANNELS_FILE = os.path.join("assets", "enabled_channels.json")
 
 
+# =========================
+# CHANNEL HELPERS
+# =========================
 def normalize_channel_name(channel_name: str) -> str:
     return channel_name.strip().lower().lstrip("#")
 
@@ -67,12 +69,67 @@ def download_image_as_base64(url):
 
 
 # =========================
+# DATABASE
+# =========================
+def save_message(channel, role, content):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO "Message" ("channelName", role, content)
+            VALUES (%s, %s, %s)
+            """,
+            (channel, role, content),
+        )
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB SAVE ERROR] {e}")
+
+
+def load_recent_messages(channel, limit=20):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT role, content
+            FROM "Message"
+            WHERE "channelName" = %s
+            ORDER BY id DESC
+            LIMIT %s
+            """,
+            (channel, limit),
+        )
+
+        rows = cur.fetchall()
+        conn.close()
+
+        return list(reversed(rows))
+    except Exception as e:
+        print(f"[DB LOAD ERROR] {e}")
+        return []
+
+
+# =========================
 # OLLAMA CALL
 # =========================
-def ask_ollama(prompt, system_prompt, images=None):
+def ask_ollama(prompt, system_prompt, history=None, images=None):
+
+    history_text = ""
+
+    if history:
+        history_text = "\n".join([f"{r[0]}: {r[1]}" for r in history])
 
     full_prompt = f"""System:
 {system_prompt}
+
+Conversation history:
+{history_text}
 
 User:
 {prompt}
@@ -99,6 +156,9 @@ Assistant:
     return response.json()["response"]
 
 
+# =========================
+# BOT EVENTS
+# =========================
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user}")
@@ -120,10 +180,7 @@ async def on_message(message):
     # =========================
     if content == "!status":
         ai_enabled = "Yes" if channel_name in enabled_channels else "No"
-
-        channel_list = ", ".join(sorted(enabled_channels))
-        if not channel_list:
-            channel_list = "None"
+        channel_list = ", ".join(sorted(enabled_channels)) or "None"
 
         await message.channel.send(
             f"Model: {current_model}\n"
@@ -155,10 +212,6 @@ async def on_message(message):
         channel_arg = content[len("!addchn"):].strip()
         target_channel = normalize_channel_name(channel_arg) if channel_arg else channel_name
 
-        if target_channel in enabled_channels:
-            await message.channel.send(f"Channel `{target_channel}` is already AI-enabled.")
-            return
-
         enabled_channels.add(target_channel)
         save_enabled_channels(enabled_channels)
 
@@ -172,24 +225,19 @@ async def on_message(message):
         channel_arg = content[len("!removechn"):].strip()
         target_channel = normalize_channel_name(channel_arg) if channel_arg else channel_name
 
-        if target_channel not in enabled_channels:
-            await message.channel.send(f"Channel `{target_channel}` is not AI-enabled.")
-            return
-
-        enabled_channels.remove(target_channel)
-        save_enabled_channels(enabled_channels)
+        if target_channel in enabled_channels:
+            enabled_channels.remove(target_channel)
+            save_enabled_channels(enabled_channels)
 
         await message.channel.send(f"Channel `{target_channel}` is no longer AI-enabled.")
         return
 
     # =========================
-    # AI MESSAGE (NO !ai ANYMORE)
+    # AI TRIGGER
     # =========================
-
     if channel_name not in enabled_channels:
         return
 
-    # ignore bot commands
     if content.startswith("!"):
         return
 
@@ -202,6 +250,16 @@ async def on_message(message):
     # SYSTEM PROMPT
     # =========================
     system_prompt = get_channel_mode(channel_name)
+
+    # =========================
+    # SAVE USER MESSAGE
+    # =========================
+    save_message(channel_name, "user", prompt)
+
+    # =========================
+    # HISTORY LOAD
+    # =========================
+    history = load_recent_messages(channel_name, limit=20)
 
     # =========================
     # IMAGE HANDLING
@@ -222,7 +280,14 @@ async def on_message(message):
     # =========================
     try:
         async with message.channel.typing():
-            answer = ask_ollama(prompt, system_prompt, images=images)
+            answer = ask_ollama(
+                prompt,
+                system_prompt,
+                history=history,
+                images=images
+            )
+
+        save_message(channel_name, "assistant", answer)
 
         if len(answer) > 1800:
             answer = answer[:1800] + "\n\n[truncated]"
