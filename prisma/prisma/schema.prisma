@@ -15,10 +15,12 @@ model Message {
 }
 
 model Summary {
-  id           Int      @id @default(autoincrement())
-  channelName  String
-  summary      String
-  startTime    DateTime
-  endTime      DateTime
-  createdAt    DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  channelName    String
+  summary        String
+
+  startMessageId Int
+  endMessageId   Int
+
+  createdAt      DateTime @default(now())
 }
