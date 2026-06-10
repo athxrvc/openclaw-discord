@@ -34,7 +34,6 @@
 - `endTime`: summary window end
 - `createdAt`: insert timestamp
 
-`Summary` is defined in the schema for future memory compaction, but currently writes only `Message` rows.
 
 
 ## Runtime Behavior

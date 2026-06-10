@@ -7,7 +7,6 @@ import discord
 from dotenv import load_dotenv
 from channel_modes import get_channel_mode
 from db import get_connection
-from memory_manager import check_and_summarise, build_memory_context
 
 load_dotenv()
 
@@ -32,7 +31,7 @@ def normalize_channel_name(channel_name: str) -> str:
     return channel_name.strip().lower().lstrip("#")
 
 
-def load_enabled_channels() -> set[str]:
+def load_disabled_channels() -> set[str]:
     if not os.path.exists(ENABLED_CHANNELS_FILE):
         return set()
 
@@ -52,13 +51,13 @@ def load_enabled_channels() -> set[str]:
     return set()
 
 
-def save_enabled_channels(channels: set[str]) -> None:
+def save_disabled_channels(channels: set[str]) -> None:
     os.makedirs(os.path.dirname(ENABLED_CHANNELS_FILE), exist_ok=True)
     with open(ENABLED_CHANNELS_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted(channels), f, indent=2)
 
 
-enabled_channels = load_enabled_channels()
+disabled_channels = load_disabled_channels()
 
 
 # =========================
@@ -71,43 +70,50 @@ def download_image_as_base64(url):
 
 
 # =========================
-# DATABASE HELPERS
+# DATABASE
 # =========================
 def save_message(channel, role, content):
-    conn = get_connection()
-    cur = conn.cursor()
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
 
-    cur.execute(
-        """
-        INSERT INTO "Message" ("channelName", role, content)
-        VALUES (%s, %s, %s)
-        """,
-        (channel, role, content),
-    )
+        cur.execute(
+            """
+            INSERT INTO "Message" ("channelName", role, content)
+            VALUES (%s, %s, %s)
+            """,
+            (channel, role, content),
+        )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB SAVE ERROR] {e}")
 
 
-def load_recent_messages(channel, limit=20):
-    conn = get_connection()
-    cur = conn.cursor()
+def load_recent_messages(channel, limit=100):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT role, content
-        FROM "Message"
-        WHERE "channelName" = %s
-        ORDER BY id DESC
-        LIMIT %s
-        """,
-        (channel, limit),
-    )
+        cur.execute(
+            """
+            SELECT role, content
+            FROM "Message"
+            WHERE "channelName" = %s
+            ORDER BY id DESC
+            LIMIT %s
+            """,
+            (channel, limit),
+        )
 
-    rows = cur.fetchall()
-    conn.close()
+        rows = cur.fetchall()
+        conn.close()
 
-    return list(reversed(rows))
+        return list(reversed(rows))
+    except Exception as e:
+        print(f"[DB LOAD ERROR] {e}")
+        return []
 
 
 # =========================
@@ -162,7 +168,7 @@ async def on_ready():
 @client.event
 async def on_message(message):
     global current_model
-    global enabled_channels
+    global disabled_channels
 
     if message.author == client.user:
         return
@@ -174,15 +180,15 @@ async def on_message(message):
     # STATUS
     # =========================
     if content == "!status":
-        ai_enabled = "Yes" if channel_name in enabled_channels else "No"
-        channel_list = ", ".join(sorted(enabled_channels)) or "None"
+        ai_enabled = "No" if channel_name in disabled_channels else "Yes"
+        channel_list = ", ".join(sorted(disabled_channels)) or "None"
 
         await message.channel.send(
             f"Model: {current_model}\n"
             f"Bot: Online\n"
             f"Current Channel: {channel_name}\n"
             f"AI Enabled: {ai_enabled}\n"
-            f"AI Channels: {channel_list}"
+            f"Disabled Channels: {channel_list}"
         )
         return
 
@@ -201,36 +207,36 @@ async def on_message(message):
         return
 
     # =========================
-    # ENABLE CHANNEL
-    # =========================
-    if content.startswith("!addchn"):
-        channel_arg = content[len("!addchn"):].strip()
-        target_channel = normalize_channel_name(channel_arg) if channel_arg else channel_name
-
-        enabled_channels.add(target_channel)
-        save_enabled_channels(enabled_channels)
-
-        await message.channel.send(f"Channel `{target_channel}` is now AI-enabled.")
-        return
-
-    # =========================
     # DISABLE CHANNEL
     # =========================
     if content.startswith("!removechn"):
         channel_arg = content[len("!removechn"):].strip()
         target_channel = normalize_channel_name(channel_arg) if channel_arg else channel_name
 
-        if target_channel in enabled_channels:
-            enabled_channels.remove(target_channel)
-            save_enabled_channels(enabled_channels)
+        disabled_channels.add(target_channel)
+        save_disabled_channels(disabled_channels)
 
-        await message.channel.send(f"Channel `{target_channel}` is no longer AI-enabled.")
+        await message.channel.send(f"Channel `{target_channel}` disabled for AI.")
+        return
+
+    # =========================
+    # ENABLE CHANNEL
+    # =========================
+    if content.startswith("!addchn"):
+        channel_arg = content[len("!addchn"):].strip()
+        target_channel = normalize_channel_name(channel_arg) if channel_arg else channel_name
+
+        if target_channel in disabled_channels:
+            disabled_channels.remove(target_channel)
+            save_disabled_channels(disabled_channels)
+
+        await message.channel.send(f"Channel `{target_channel}` enabled for AI.")
         return
 
     # =========================
     # AI TRIGGER
     # =========================
-    if channel_name not in enabled_channels:
+    if channel_name in disabled_channels:
         return
 
     if content.startswith("!"):
@@ -244,9 +250,7 @@ async def on_message(message):
 
     save_message(channel_name, "user", prompt)
 
-    recent_messages = load_recent_messages(channel_name, limit=100)
-
-    memory_context = build_memory_context(channel_name, recent_messages)
+    history = load_recent_messages(channel_name, limit=100)
 
     images = []
 
@@ -263,19 +267,12 @@ async def on_message(message):
         async with message.channel.typing():
             answer = ask_ollama(
                 prompt,
-                system_prompt + "\n\n" + memory_context,
+                system_prompt,
+                history=history,
                 images=images
             )
 
         save_message(channel_name, "assistant", answer)
-
-        # =========================
-        # MEMORY SYSTEM (NEW)
-        # =========================
-        check_and_summarise(
-            channel_name,
-            lambda p: ask_ollama(p, system_prompt)
-        )
 
         if len(answer) > 1800:
             answer = answer[:1800] + "\n\n[truncated]"
