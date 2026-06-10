@@ -7,6 +7,7 @@ import discord
 from dotenv import load_dotenv
 from channel_modes import get_channel_mode
 from db import get_connection
+from memory_manager import check_and_summarise, build_memory_context
 
 load_dotenv()
 
@@ -20,6 +21,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
+
 ENABLED_CHANNELS_FILE = os.path.join("assets", "enabled_channels.json")
 
 
@@ -69,50 +71,43 @@ def download_image_as_base64(url):
 
 
 # =========================
-# DATABASE
+# DATABASE HELPERS
 # =========================
 def save_message(channel, role, content):
-    try:
-        conn = get_connection()
-        cur = conn.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
 
-        cur.execute(
-            """
-            INSERT INTO "Message" ("channelName", role, content)
-            VALUES (%s, %s, %s)
-            """,
-            (channel, role, content),
-        )
+    cur.execute(
+        """
+        INSERT INTO "Message" ("channelName", role, content)
+        VALUES (%s, %s, %s)
+        """,
+        (channel, role, content),
+    )
 
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"[DB SAVE ERROR] {e}")
+    conn.commit()
+    conn.close()
 
 
 def load_recent_messages(channel, limit=20):
-    try:
-        conn = get_connection()
-        cur = conn.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
 
-        cur.execute(
-            """
-            SELECT role, content
-            FROM "Message"
-            WHERE "channelName" = %s
-            ORDER BY id DESC
-            LIMIT %s
-            """,
-            (channel, limit),
-        )
+    cur.execute(
+        """
+        SELECT role, content
+        FROM "Message"
+        WHERE "channelName" = %s
+        ORDER BY id DESC
+        LIMIT %s
+        """,
+        (channel, limit),
+    )
 
-        rows = cur.fetchall()
-        conn.close()
+    rows = cur.fetchall()
+    conn.close()
 
-        return list(reversed(rows))
-    except Exception as e:
-        print(f"[DB LOAD ERROR] {e}")
-        return []
+    return list(reversed(rows))
 
 
 # =========================
@@ -242,28 +237,17 @@ async def on_message(message):
         return
 
     prompt = content
-
     if not prompt and not message.attachments:
         return
 
-    # =========================
-    # SYSTEM PROMPT
-    # =========================
     system_prompt = get_channel_mode(channel_name)
 
-    # =========================
-    # SAVE USER MESSAGE
-    # =========================
     save_message(channel_name, "user", prompt)
 
-    # =========================
-    # HISTORY LOAD
-    # =========================
-    history = load_recent_messages(channel_name, limit=20)
+    recent_messages = load_recent_messages(channel_name, limit=100)
 
-    # =========================
-    # IMAGE HANDLING
-    # =========================
+    memory_context = build_memory_context(channel_name, recent_messages)
+
     images = []
 
     if message.attachments:
@@ -275,19 +259,23 @@ async def on_message(message):
                 except Exception as e:
                     await message.channel.send(f"Failed to process image: {str(e)}")
 
-    # =========================
-    # CALL MODEL
-    # =========================
     try:
         async with message.channel.typing():
             answer = ask_ollama(
                 prompt,
-                system_prompt,
-                history=history,
+                system_prompt + "\n\n" + memory_context,
                 images=images
             )
 
         save_message(channel_name, "assistant", answer)
+
+        # =========================
+        # MEMORY SYSTEM (NEW)
+        # =========================
+        check_and_summarise(
+            channel_name,
+            lambda p: ask_ollama(p, system_prompt)
+        )
 
         if len(answer) > 1800:
             answer = answer[:1800] + "\n\n[truncated]"
