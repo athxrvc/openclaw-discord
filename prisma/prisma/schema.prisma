@@ -18,9 +18,7 @@ model Summary {
   id             Int      @id @default(autoincrement())
   channelName    String
   summary        String
-
   startMessageId Int
   endMessageId   Int
-
   createdAt      DateTime @default(now())
 }

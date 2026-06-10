@@ -161,3 +161,40 @@ def check_and_summarise(channel_name: str, ask_llm_func):
     save_summary(channel_name, summary_text, first_id, last_id)
 
     print(f"[SUMMARY] {channel_name}: {first_id} → {last_id}")
+
+
+def load_summaries(channel_name: str, limit: int = 10):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT summary
+        FROM "Summary"
+        WHERE "channelName" = %s
+        ORDER BY "endMessageId" DESC
+        LIMIT %s
+        """,
+        (channel_name, limit),
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return [r[0] for r in rows]
+
+
+def build_memory_context(channel_name: str, recent_messages):
+    summaries = load_summaries(channel_name, limit=10)
+
+    summary_text = "\n".join([f"- {s}" for s in summaries]) or "None"
+
+    history_text = "\n".join([f"{r[0]}: {r[1]}" for r in recent_messages])
+
+    return f"""
+LONG-TERM MEMORY (Summaries):
+{summary_text}
+
+RECENT CONVERSATION:
+{history_text}
+"""

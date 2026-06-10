@@ -7,7 +7,7 @@ import discord
 from dotenv import load_dotenv
 from channel_modes import get_channel_mode
 from db import get_connection
-from memory_manager import check_and_summarise
+from memory_manager import check_and_summarise, build_memory_context
 
 load_dotenv()
 
@@ -244,7 +244,9 @@ async def on_message(message):
 
     save_message(channel_name, "user", prompt)
 
-    history = load_recent_messages(channel_name, limit=20)
+    recent_messages = load_recent_messages(channel_name, limit=20)
+
+    memory_context = build_memory_context(channel_name, recent_messages)
 
     images = []
 
@@ -261,8 +263,7 @@ async def on_message(message):
         async with message.channel.typing():
             answer = ask_ollama(
                 prompt,
-                system_prompt,
-                history=history,
+                system_prompt + "\n\n" + memory_context,
                 images=images
             )
 
