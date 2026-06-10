@@ -42,14 +42,7 @@
 When a message is sent in an AI-enabled channel:
 
 1. The bot stores the incoming user message in `Message`
-2. The bot loads the most recent 20 rows for that channel
+2. The bot loads the most recent 100 rows for that channel
 3. The recent history is appended into the Ollama prompt
 4. The assistant response is stored back into `Message`
-
-This means memory is currently scoped by channel and limited to a recent-message window, not long-term summarization.
-
-## Current Limitations
-
-- The bot stores raw recent messages, not condensed summaries
-- `Summary` exists in the schema but is not yet written by the bot
-- Message history is capped in memory loading logic, currently `limit=20`
+5. Long term summarisation is now supported.

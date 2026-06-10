@@ -244,7 +244,7 @@ async def on_message(message):
 
     save_message(channel_name, "user", prompt)
 
-    recent_messages = load_recent_messages(channel_name, limit=20)
+    recent_messages = load_recent_messages(channel_name, limit=100)
 
     memory_context = build_memory_context(channel_name, recent_messages)
 
