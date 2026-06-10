@@ -1,0 +1,24 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Message {
+  id           Int      @id @default(autoincrement())
+  channelName  String
+  role         String
+  content      String
+  createdAt    DateTime @default(now())
+}
+
+model Summary {
+  id           Int      @id @default(autoincrement())
+  channelName  String
+  summary      String
+  startTime    DateTime
+  endTime      DateTime
+  createdAt    DateTime @default(now())
+}

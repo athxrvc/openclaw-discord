@@ -3,3 +3,12 @@ __pycache__/
 *.pyc
 .vscode/
 assets/enabled_channels.json
+setup_readme.md
+prisma/.env
+prisma/node_modules/
+prisma/generated/
+terraform/terraform.tfvars
+terraform/*.auto.tfvars
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform/
