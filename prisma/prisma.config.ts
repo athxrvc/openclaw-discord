@@ -1,8 +1,12 @@
-import path from "node:path";
+// @ts-nocheck
 import { config as loadEnv } from "dotenv";
 import { defineConfig } from "prisma/config";
 
-loadEnv({ path: path.resolve(__dirname, "..", ".env") });
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
+loadEnv({ path: "../.env" });
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
