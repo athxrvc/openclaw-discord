@@ -6,7 +6,7 @@ import discord
 
 from dotenv import load_dotenv
 from channel_modes import get_channel_mode
-from db import get_connection
+from db import save_message, load_recent_messages
 from memory_manager import check_and_summarise, build_memory_context
 
 load_dotenv()
@@ -69,53 +69,6 @@ def download_image_as_base64(url):
     response = requests.get(url)
     response.raise_for_status()
     return base64.b64encode(response.content).decode("utf-8")
-
-
-# =========================
-# DATABASE
-# =========================
-def save_message(channel, role, content):
-    try:
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            INSERT INTO "Message" ("channelName", role, content)
-            VALUES (%s, %s, %s)
-            """,
-            (channel, role, content),
-        )
-
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"[DB SAVE ERROR] {e}")
-
-
-def load_recent_messages(channel, limit=100):
-    try:
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            SELECT role, content
-            FROM "Message"
-            WHERE "channelName" = %s
-            ORDER BY id DESC
-            LIMIT %s
-            """,
-            (channel, limit),
-        )
-
-        rows = cur.fetchall()
-        conn.close()
-
-        return list(reversed(rows))
-    except Exception as e:
-        print(f"[DB LOAD ERROR] {e}")
-        return []
 
 
 # =========================

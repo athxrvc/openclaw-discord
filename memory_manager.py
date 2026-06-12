@@ -1,105 +1,15 @@
-import os
-from db import get_connection
+from db import (
+    count_messages,
+    get_unsummarised_messages,
+    get_latest_summary,
+    save_summary,
+    load_summaries,
+)
 
 # =========================
 # CONFIG
 # =========================
 SUMMARY_THRESHOLD = 100
-
-
-# =========================
-# MESSAGE FUNCTIONS
-# =========================
-def count_messages(channel_name: str) -> int:
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT COUNT(*)
-        FROM "Message"
-        WHERE "channelName" = %s
-        """,
-        (channel_name,),
-    )
-
-    count = cur.fetchone()[0]
-    conn.close()
-    return count
-
-
-def get_unsummarised_messages(channel_name: str, start_id: int | None = None, limit: int = 100):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    if start_id:
-        cur.execute(
-            """
-            SELECT id, role, content
-            FROM "Message"
-            WHERE "channelName" = %s
-            AND id > %s
-            ORDER BY id ASC
-            LIMIT %s
-            """,
-            (channel_name, start_id, limit),
-        )
-    else:
-        cur.execute(
-            """
-            SELECT id, role, content
-            FROM "Message"
-            WHERE "channelName" = %s
-            ORDER BY id ASC
-            LIMIT %s
-            """,
-            (channel_name, limit),
-        )
-
-    rows = cur.fetchall()
-    conn.close()
-    return rows
-
-
-# =========================
-# SUMMARY FUNCTIONS
-# =========================
-def get_latest_summary(channel_name: str):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT startMessageId, endMessageId
-        FROM "Summary"
-        WHERE "channelName" = %s
-        ORDER BY "endMessageId" DESC
-        LIMIT 1
-        """,
-        (channel_name,),
-    )
-
-    row = cur.fetchone()
-    conn.close()
-
-    return row if row else None
-
-
-def save_summary(channel_name: str, summary: str, start_id: int, end_id: int):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        INSERT INTO "Summary"
-        ("channelName", summary, "startMessageId", "endMessageId")
-        VALUES (%s, %s, %s, %s)
-        """,
-        (channel_name, summary, start_id, end_id),
-    )
-
-    conn.commit()
-    conn.close()
 
 
 # =========================
@@ -161,27 +71,6 @@ def check_and_summarise(channel_name: str, ask_llm_func):
     save_summary(channel_name, summary_text, first_id, last_id)
 
     print(f"[SUMMARY] {channel_name}: {first_id} → {last_id}")
-
-
-def load_summaries(channel_name: str, limit: int = 10):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT summary
-        FROM "Summary"
-        WHERE "channelName" = %s
-        ORDER BY "endMessageId" DESC
-        LIMIT %s
-        """,
-        (channel_name, limit),
-    )
-
-    rows = cur.fetchall()
-    conn.close()
-
-    return [r[0] for r in rows]
 
 
 def build_memory_context(channel_name: str, recent_messages):
