@@ -1,6 +1,7 @@
 import os
 import base64
 import json
+import re
 import requests
 import discord
 
@@ -68,6 +69,25 @@ def download_image_as_base64(url):
     response = requests.get(url)
     response.raise_for_status()
     return base64.b64encode(response.content).decode("utf-8")
+
+
+def clean_response(text):
+    """Remove unwanted tokens from model responses."""
+    unwanted_patterns = [
+        r"<\|channel>thought",
+        r"<channel\|>",
+        r"<\|im_start\|>",
+        r"<\|im_end\|>",
+        r"<\|system\|>",
+        r"<\|user\|>",
+        r"<\|assistant\|>",
+    ]
+    
+    cleaned = text
+    for pattern in unwanted_patterns:
+        cleaned = re.sub(pattern, "", cleaned)
+    
+    return cleaned.strip()
 
 
 # =========================
@@ -159,7 +179,8 @@ Assistant:
 
     response.raise_for_status()
     # llama.cpp returns OpenAI-compatible format
-    return response.json()["choices"][0]["text"]
+    answer = response.json()["choices"][0]["text"]
+    return clean_response(answer)
 
 
 # =========================
