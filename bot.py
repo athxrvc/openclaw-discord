@@ -1,7 +1,6 @@
 import os
 import base64
 import json
-import re
 import requests
 import discord
 
@@ -12,9 +11,9 @@ from db import get_connection
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-DEFAULT_MODEL = "default"  # llama.cpp model loaded at server startup
-MODEL = os.getenv("LLAMA_MODEL", DEFAULT_MODEL)
-LLAMA_SERVER_URL = os.getenv("LLAMA_SERVER_URL", "http://localhost:8080/v1/completions")
+DEFAULT_MODEL = "maxwellb/gemma4-12b-it-oym"
+MODEL = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 
 current_model = MODEL
 
@@ -69,25 +68,6 @@ def download_image_as_base64(url):
     response = requests.get(url)
     response.raise_for_status()
     return base64.b64encode(response.content).decode("utf-8")
-
-
-def clean_response(text):
-    """Remove unwanted tokens from model responses."""
-    unwanted_patterns = [
-        r"<\|channel>thought",
-        r"<channel\|>",
-        r"<\|im_start\|>",
-        r"<\|im_end\|>",
-        r"<\|system\|>",
-        r"<\|user\|>",
-        r"<\|assistant\|>",
-    ]
-    
-    cleaned = text
-    for pattern in unwanted_patterns:
-        cleaned = re.sub(pattern, "", cleaned)
-    
-    return cleaned.strip()
 
 
 # =========================
@@ -162,25 +142,20 @@ Assistant:
     payload = {
         "model": current_model,
         "prompt": full_prompt,
-        "stream": False,
-        "temperature": 0.7,
-        "top_p": 0.9,
-        "max_tokens": 512
+        "stream": False
     }
 
-    # Note: llama.cpp/llama_server doesn't natively support image embedding
-    # Images are not sent in the payload
+    if images:
+        payload["images"] = images
 
     response = requests.post(
-        LLAMA_SERVER_URL,
+        OLLAMA_URL,
         json=payload,
         timeout=300
     )
 
     response.raise_for_status()
-    # llama.cpp returns OpenAI-compatible format
-    answer = response.json()["choices"][0]["text"]
-    return clean_response(answer)
+    return response.json()["response"]
 
 
 # =========================
