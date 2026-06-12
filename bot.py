@@ -7,6 +7,7 @@ import discord
 from dotenv import load_dotenv
 from channel_modes import get_channel_mode
 from db import get_connection
+from memory_manager import check_and_summarise, build_memory_context
 
 load_dotenv()
 
@@ -333,6 +334,16 @@ def ask_ollama(prompt, system_prompt, history=None, images=None):
     return text
 
 
+def summarise_with_model(summary_prompt: str) -> str:
+    """Generate a compact summary using the active model."""
+    summary_system_prompt = (
+        "You are a memory compression assistant. "
+        "Return concise, factual summaries only."
+    )
+    text = ask_ollama(summary_prompt, summary_system_prompt, history=None, images=None)
+    return clean_response(text) or "Summary unavailable."
+
+
 # =========================
 # BOT EVENTS
 # =========================
@@ -422,11 +433,20 @@ async def on_message(message):
     if not prompt and not message.attachments:
         return
 
-    system_prompt = get_channel_mode(channel_name)
-
     # Load recent messages before saving current prompt to avoid duplicate context.
     history_limit = 3 if message.attachments else 10
     history = load_recent_messages(channel_name, limit=history_limit)
+
+    base_system_prompt = get_channel_mode(channel_name)
+    if message.attachments:
+        # Keep image turns focused on the image request.
+        system_prompt = base_system_prompt
+    else:
+        memory_context = build_memory_context(channel_name, history)
+        system_prompt = (
+            f"{base_system_prompt}\n\n"
+            f"Use the memory context below as background:\n{memory_context}"
+        )
 
     save_message(channel_name, "user", prompt)
 
@@ -457,6 +477,12 @@ async def on_message(message):
             return
         
         save_message(channel_name, "assistant", answer)
+
+        # Summarize in 100-message batches for long-term memory.
+        try:
+            check_and_summarise(channel_name, summarise_with_model)
+        except Exception as summary_error:
+            print(f"[SUMMARY ERROR] {summary_error}")
 
         if len(answer) > 1800:
             answer = answer[:1800] + "\n\n[truncated]"
