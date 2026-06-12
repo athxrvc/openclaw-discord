@@ -8,15 +8,11 @@ from dotenv import load_dotenv
 from channel_modes import get_channel_mode
 from db import save_message, load_recent_messages
 from memory_manager import check_and_summarise, build_memory_context
+from llm import ask_model, clean_response, summarise_with_model, set_current_model, get_current_model
 
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-DEFAULT_MODEL = "maxwellb/gemma4-12b-it-oym"
-MODEL = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
-
-current_model = MODEL
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -72,232 +68,6 @@ def download_image_as_base64(url):
 
 
 # =========================
-# RESPONSE CLEANUP
-# =========================
-def clean_response(text):
-    """Remove internal markers and debug tokens from model response."""
-    import re
-    
-    if not text or not isinstance(text, str):
-        return ""
-    
-    # Remove internal markers like <thought>, <channel|>, etc.
-    text = re.sub(r'<[a-z_|\d]+>', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'</[a-z_|\d]+>', '', text, flags=re.IGNORECASE)
-    
-    # Remove bare URLs that look like model hallucinations
-    text = re.sub(r'https?://\S+', '', text)
-    
-    # Clean up multiple spaces/newlines
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    text = re.sub(r' {2,}', ' ', text)  # Remove multiple consecutive spaces
-    
-    text = text.strip()
-    
-    return text
-
-
-def _normalize_chat_url(url: str) -> str:
-    """Convert generate endpoint to chat endpoint for multimodal fidelity."""
-    if url.endswith("/api/generate"):
-        return url[:-len("/api/generate")] + "/api/chat"
-    return url
-
-
-def _base_inference_url(url: str) -> str:
-    """Return base server URL without known endpoint suffixes."""
-    for suffix in ("/api/generate", "/api/chat", "/v1/chat/completions", "/v1/completions"):
-        if url.endswith(suffix):
-            return url[:-len(suffix)]
-    return url.rstrip("/")
-
-
-def _extract_model_text(data: dict) -> str:
-    """Extract text from Ollama, llama.cpp, or OpenAI-compatible responses."""
-    if not isinstance(data, dict):
-        return ""
-
-    # Ollama generate
-    if isinstance(data.get("response"), str):
-        return data["response"]
-
-    # Ollama chat
-    message = data.get("message")
-    if isinstance(message, dict) and isinstance(message.get("content"), str):
-        return message["content"]
-
-    # Some servers return top-level content
-    if isinstance(data.get("content"), str):
-        return data["content"]
-
-    # OpenAI-compatible chat/completions
-    choices = data.get("choices")
-    if isinstance(choices, list) and choices:
-        first = choices[0]
-        if isinstance(first, dict):
-            msg = first.get("message")
-            if isinstance(msg, dict) and isinstance(msg.get("content"), str):
-                return msg["content"]
-            if isinstance(first.get("text"), str):
-                return first["text"]
-
-    return ""
-
-
-def _build_generate_prompt(prompt, system_prompt, history=None):
-    history_text = ""
-    if history:
-        history_lines = []
-        for role, content in history:
-            content_clean = content.strip()[:500] if content else ""
-            if content_clean and role in ("user", "assistant"):
-                history_lines.append(f"{role.capitalize()}: {content_clean}")
-        history_text = "\n".join(history_lines)
-
-    history_section = f"Conversation history:\n{history_text}\n" if history_text else ""
-    return f"""You are a helpful Discord assistant.
-
-{system_prompt}
-
-{history_section}
-Respond to the following user message:
-
-{prompt or "Describe this image."}
-
-If an image is provided, describe only what is visible and avoid guessing.
-"""
-
-
-def _build_messages(system_prompt, prompt, history=None, images=None):
-    """Build chat messages for Ollama chat-style APIs."""
-    messages = []
-
-    base_system = (
-        "You are a helpful Discord assistant. "
-        "Answer only what the user asked. "
-        "If an image is provided, describe only what is visible in that image. "
-        "If details are unclear, say so instead of guessing."
-    )
-    messages.append({"role": "system", "content": f"{base_system}\n\n{system_prompt}"})
-
-    if history:
-        for role, content in history:
-            content_clean = content.strip()[:500] if content else ""
-            if content_clean and role in ("user", "assistant"):
-                messages.append({"role": role, "content": content_clean})
-
-    user_message = {"role": "user", "content": prompt or "Describe this image."}
-    if images:
-        user_message["images"] = images
-    messages.append(user_message)
-
-    return messages
-
-
-def _to_openai_messages(ollama_messages):
-    """Convert Ollama-style messages to OpenAI-compatible messages for v1 endpoints."""
-    openai_messages = []
-    for msg in ollama_messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        images = msg.get("images") or []
-
-        if images and role == "user":
-            multi_content = [{"type": "text", "text": content or "Describe this image."}]
-            for image_b64 in images:
-                multi_content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_b64}"
-                        }
-                    }
-                )
-            openai_messages.append({"role": role, "content": multi_content})
-        else:
-            openai_messages.append({"role": role, "content": content})
-
-    return openai_messages
-
-
-# =========================
-# OLLAMA CALL
-# =========================
-def ask_ollama(prompt, system_prompt, history=None, images=None):
-    effective_history = [] if images else (history or [])
-    messages = _build_messages(system_prompt, prompt, history=effective_history, images=images)
-
-    ollama_chat_payload = {
-        "model": current_model,
-        "messages": messages,
-        "stream": False,
-        "options": {
-            "temperature": 0.2
-        }
-    }
-
-    # 1) Try chat endpoint first.
-    primary_chat_url = _normalize_chat_url(OLLAMA_URL)
-    base_url = _base_inference_url(OLLAMA_URL)
-    v1_chat_url = f"{base_url}/v1/chat/completions"
-
-    # Try Ollama chat payload first.
-    try:
-        response = requests.post(primary_chat_url, json=ollama_chat_payload, timeout=300)
-        response.raise_for_status()
-        text = _extract_model_text(response.json())
-        if text.strip():
-            return text
-    except Exception:
-        pass
-
-    # Then try OpenAI-compatible payload for llama.cpp-style v1 endpoints.
-    openai_chat_payload = {
-        "model": current_model,
-        "messages": _to_openai_messages(messages),
-        "temperature": 0.2,
-        "stream": False
-    }
-    try:
-        response = requests.post(v1_chat_url, json=openai_chat_payload, timeout=300)
-        response.raise_for_status()
-        text = _extract_model_text(response.json())
-        if text.strip():
-            return text
-    except Exception:
-        pass
-
-    # 2) Fallback to generate endpoint style.
-    generate_payload = {
-        "model": current_model,
-        "prompt": _build_generate_prompt(prompt, system_prompt, history=effective_history),
-        "stream": False,
-        "options": {
-            "temperature": 0.2
-        }
-    }
-    if images:
-        generate_payload["images"] = images
-
-    generate_url = f"{base_url}/api/generate"
-
-    response = requests.post(generate_url, json=generate_payload, timeout=300)
-    response.raise_for_status()
-    text = _extract_model_text(response.json())
-    return text
-
-
-def summarise_with_model(summary_prompt: str) -> str:
-    """Generate a compact summary using the active model."""
-    summary_system_prompt = (
-        "You are a memory compression assistant. "
-        "Return concise, factual summaries only."
-    )
-    text = ask_ollama(summary_prompt, summary_system_prompt, history=None, images=None)
-    return clean_response(text) or "Summary unavailable."
-
-
-# =========================
 # BOT EVENTS
 # =========================
 @client.event
@@ -307,7 +77,6 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    global current_model
     global disabled_channels
 
     if message.author == client.user:
@@ -320,6 +89,7 @@ async def on_message(message):
     # STATUS
     # =========================
     if content == "!status":
+        current_model = get_current_model()
         ai_enabled = "No" if channel_name in disabled_channels else "Yes"
         channel_list = ", ".join(sorted(disabled_channels)) or "None"
 
@@ -342,7 +112,8 @@ async def on_message(message):
             await message.channel.send("Usage: !switch <model_name>")
             return
 
-        current_model = new_model
+        set_current_model(new_model)
+        current_model = get_current_model()
         await message.channel.send(f"Switched model to: `{current_model}`")
         return
 
@@ -416,7 +187,7 @@ async def on_message(message):
 
     try:
         async with message.channel.typing():
-            answer = ask_ollama(
+            answer = ask_model(
                 prompt,
                 system_prompt,
                 history=history,
