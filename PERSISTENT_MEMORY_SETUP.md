@@ -1,19 +1,27 @@
 
-## What was added
+## Persistent Memory Setup
+
+This project uses PostgreSQL + Prisma-backed tables to persist chat history and long-term summaries per Discord channel.
+
+## What Is Included
 
 - PostgreSQL connection support through `DATABASE_URL` or fallback `DB_*` environment variables
 - Prisma schema for `Message` and `Summary`
-- Bot-side message persistence in `bot.py`
-- Recent-message history loading before each Ollama request
-- Local Prisma tooling in `prisma/` for schema validation and database sync
+- Centralized SQL access in `db.py`
+- Summary pipeline orchestration in `memory_manager.py`
+- LLM request/cleanup module in `llm.py`
+- Channel-aware recent-history loading before model calls
+- Long-term summary generation in 100-message unsummarized batches
 
-## Files Added Or Changed
+## Current File Responsibilities
 
-- `db.py`: shared PostgreSQL connection helper
-- `bot.py`: saves user and assistant messages, loads recent channel history
-- `prisma/prisma/schema.prisma`: defines persistent models
+- `bot.py`: Discord events/commands and runtime flow orchestration
+- `db.py`: all message + summary database reads/writes
+- `memory_manager.py`: summary prompt building and summarization control flow
+- `llm.py`: model calls (`ask_model`), response cleanup, model switching state
+- `prisma/prisma/schema.prisma`: persistent model definitions
 - `prisma/prisma.config.ts`: Prisma config that reads the root `.env`
-- `prisma/package.json`: Prisma scripts for validate, generate, and db push
+- `prisma/package.json`: Prisma scripts (`validate`, `generate`, `db:push`)
 
 ## Data Model
 
@@ -29,19 +37,24 @@
 
 - `id`: auto-increment primary key
 - `channelName`: normalized Discord channel name
-- `summary`: summary text
-- `startTime`: summary window start
-- `endTime`: summary window end
+- `summary`: compressed long-term memory text
+- `startMessageId`: first message id included in this summary batch
+- `endMessageId`: last message id included in this summary batch
 - `createdAt`: insert timestamp
-
-
 
 ## Runtime Behavior
 
 When a message is sent in an AI-enabled channel:
 
-1. The bot stores the incoming user message in `Message`
-2. The bot loads the most recent 100 rows for that channel
-3. The recent history is appended into the Ollama prompt
-4. The assistant response is stored back into `Message`
-5. Long term summarisation is now supported.
+1. The bot normalizes channel name and checks whether AI is enabled.
+2. It loads recent channel messages from `Message` (text chats use larger history than image chats).
+3. For text chats, `memory_manager.py` builds memory context using recent summaries + recent messages.
+4. The user message is stored in `Message`.
+5. The model is called through `llm.py` and the response is cleaned.
+6. The assistant response is stored in `Message`.
+7. Summarization check runs; each new 100-message unsummarized window is compressed into a `Summary` row.
+
+## Notes
+
+- Model selection is process-local (in-memory), exposed via `!switch` and visible in `!status`.
+- Persistent memory is channel-scoped through `channelName` on both tables.
