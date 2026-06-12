@@ -11,9 +11,9 @@ from db import get_connection
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-DEFAULT_MODEL = "maxwellb/gemma4-12b-it-oym"
-MODEL = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+DEFAULT_MODEL = "default"  # llama.cpp model loaded at server startup
+MODEL = os.getenv("LLAMA_MODEL", DEFAULT_MODEL)
+LLAMA_SERVER_URL = os.getenv("LLAMA_SERVER_URL", "http://localhost:8080/v1/completions")
 
 current_model = MODEL
 
@@ -142,20 +142,24 @@ Assistant:
     payload = {
         "model": current_model,
         "prompt": full_prompt,
-        "stream": False
+        "stream": False,
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "max_tokens": 512
     }
 
-    if images:
-        payload["images"] = images
+    # Note: llama.cpp/llama_server doesn't natively support image embedding
+    # Images are not sent in the payload
 
     response = requests.post(
-        OLLAMA_URL,
+        LLAMA_SERVER_URL,
         json=payload,
         timeout=300
     )
 
     response.raise_for_status()
-    return response.json()["response"]
+    # llama.cpp returns OpenAI-compatible format
+    return response.json()["choices"][0]["text"]
 
 
 # =========================

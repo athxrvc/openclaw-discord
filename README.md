@@ -1,27 +1,26 @@
 # OpenClaw Discord Bot
 
-OpenClaw Discord Bot v2 is a local-first Discord assistant powered by Ollama.
-It supports both text and image workflows, channel-aware behavior, and runtime model switching.
+OpenClaw Discord Bot v2 is a local-first Discord assistant powered by llama.cpp.
+It supports text workflows, channel-aware behavior, and runtime model switching.
 
 Pipeline:
-Discord -> Python Bot -> Ollama -> Local Model -> Discord response.
+Discord -> Python Bot -> llama_server -> Local Model -> Discord response.
 
 ## What is new?
 
-- Multimodal support for image attachments in `!ai` prompts
-- Default single-model setup with `maxwellb/gemma4-12b-it-oym`
-- Improved Ollama request flow for both text-only and image-enabled prompts
+- Migrated from Ollama to llama.cpp for improved performance
+- Uses OpenAI-compatible completions API (llama_server)
+- Model downloaded and loaded directly with llama.cpp
 - Channel-based system prompting via `channel_modes.py`
-- Better support for vision-capable workflows using a single model
+- Lightweight and resource-efficient local inference
 
 ## Features
 
-- Chat with local Ollama models directly from Discord
-- Send images with your prompt for vision-capable models
-- Use one default model across channels to avoid frequent switching
+- Chat with local llama.cpp models directly from Discord
+- Use one default model across channels
 - Channel-specific assistant behavior (`general`, `personal`, `code`, `bot-test`)
 - Simple command interface: `!status`, `!switch`, `!addchn`, `!removechn`
-- Lightweight Python implementation
+- Lightweight Python implementation with fast local inference
 
 ## Architecture
 
@@ -32,28 +31,33 @@ Discord Message
 Python Discord Bot (discord.py)
   |
   |-- Channel mode -> system prompt
-  |-- Optional image attachment -> base64
   v
-Ollama Generate API (http://localhost:11434/api/generate)
+llama_server OpenAI-compatible API (http://localhost:8080/v1/completions)
   |
   v
-Active Model (text or vision)
+Active Model (local llama.cpp inference)
 ```
 
 ## Requirements
 
 - Python 3.10+
-- Ollama installed and running locally
+- llama.cpp with llama_server running locally
 - Discord bot token
-- The target model pulled in Ollama
+- A model file (`.gguf`) downloaded and available to llama_server
 
-Recommended model:
+Recommended setup:
+
+Download a model and start llama_server:
 
 ```bash
-ollama pull maxwellb/gemma4-12b-it-oym
+lllama-cli -m path/to/model.gguf --server --port 8080
 ```
 
-You can still use any compatible model name available in your local Ollama setup.
+Or use llama_server directly:
+
+```bash
+llama-server -m path/to/model.gguf -c 2048
+```
 
 ## Installation
 
@@ -74,7 +78,8 @@ pip install -r requirements.txt
 
 ```env
 DISCORD_TOKEN=your_discord_bot_token
-OLLAMA_MODEL=maxwellb/gemma4-12b-it-oym
+LLAMA_MODEL=default
+LLAMA_SERVER_URL=http://localhost:8080/v1/completions
 ```
 
 ## Run
@@ -102,19 +107,15 @@ Example:
 
 ### `!switch <model_name>`
 
-Switches the active model at runtime.
+Switches the active model identifier at runtime (requires llama_server restart with different model).
 
 Example:
 
 ```text
-!switch maxwellb/gemma4-12b-it-oym
+!switch llama2
 ```
 
-If needed, switch to another model later:
-
-```text
-!switch another-model-name
-```
+Note: Model switching only changes the identifier in the bot. The actual model loaded in llama_server must be restarted separately.
 
 ### `!addchn <channel_name>`
 
@@ -159,10 +160,11 @@ Unknown channel names fall back to `general`.
 
 ## Notes
 
-- Ollama endpoint is fixed to `http://localhost:11434/api/generate`
+- llama_server endpoint is `http://localhost:8080/v1/completions` (OpenAI-compatible)
 - Responses are non-streaming (`stream: false`)
 - Large responses are truncated before Discord send
 - Model choice is in-memory for the current bot process
+- llama_server model is loaded at startup and persists until server restart
 
 ## Current limitations
 
@@ -175,7 +177,8 @@ Unknown channel names fall back to `general`.
 
 If `!ai` fails:
 
-- Confirm Ollama is running: `ollama list`
-- Confirm selected model exists locally
+- Confirm llama_server is running on port 8080: `curl http://localhost:8080/v1/models`
+- Confirm the model is loaded in llama_server
 - Check Discord bot token in `.env`
 - Check terminal logs for request errors or timeout issues
+- Ensure `LLAMA_SERVER_URL` matches your llama_server configuration
