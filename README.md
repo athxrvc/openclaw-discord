@@ -9,16 +9,16 @@ Discord -> Python Bot -> Ollama -> Local Model -> Discord response.
 ## What is new?
 
 - Multimodal support for image attachments in `!ai` prompts
-- Runtime model switching with `!switch <model_name>`
+- Default single-model setup with `maxwellb/gemma4-12b-it-oym`
 - Improved Ollama request flow for both text-only and image-enabled prompts
 - Channel-based system prompting via `channel_modes.py`
-- Better support for vision-capable models such as Qwen2.5-VL
+- Better support for vision-capable workflows using a single model
 
 ## Features
 
 - Chat with local Ollama models directly from Discord
 - Send images with your prompt for vision-capable models
-- Switch models per running session without restarting the bot
+- Use one default model across channels to avoid frequent switching
 - Channel-specific assistant behavior (`general`, `personal`, `code`, `bot-test`)
 - Simple command interface: `!status`, `!switch`, `!addchn`, `!removechn`
 - Lightweight Python implementation
@@ -45,16 +45,15 @@ Active Model (text or vision)
 - Python 3.10+
 - Ollama installed and running locally
 - Discord bot token
-- At least one model pulled in Ollama
+- The target model pulled in Ollama
 
-Recommended models:
+Recommended model:
 
 ```bash
-ollama pull qwen2.5-coder:14b
-ollama pull qwen2.5vl:7b
+ollama pull maxwellb/gemma4-12b-it-oym
 ```
 
-You can use any compatible text/vision model names available in your local Ollama setup.
+You can still use any compatible model name available in your local Ollama setup.
 
 ## Installation
 
@@ -75,7 +74,7 @@ pip install -r requirements.txt
 
 ```env
 DISCORD_TOKEN=your_discord_bot_token
-OLLAMA_MODEL=qwen2.5-coder:14b
+OLLAMA_MODEL=maxwellb/gemma4-12b-it-oym
 ```
 
 ## Run
@@ -108,13 +107,13 @@ Switches the active model at runtime.
 Example:
 
 ```text
-!switch qwen2.5vl:7b
+!switch maxwellb/gemma4-12b-it-oym
 ```
 
-Switch back to coder model:
+If needed, switch to another model later:
 
 ```text
-!switch qwen2.5-coder:14b
+!switch another-model-name
 ```
 
 ### `!addchn <channel_name>`

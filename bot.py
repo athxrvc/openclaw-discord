@@ -11,7 +11,8 @@ from db import get_connection
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-MODEL = os.getenv("OLLAMA_MODEL")
+DEFAULT_MODEL = "maxwellb/gemma4-12b-it-oym"
+MODEL = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 
 current_model = MODEL
