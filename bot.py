@@ -118,25 +118,69 @@ def load_recent_messages(channel, limit=100):
 
 
 # =========================
+# RESPONSE CLEANUP
+# =========================
+def clean_response(text):
+    """Remove internal markers, debug tokens, and malformed content from model response."""
+    import re
+    
+    if not text or not isinstance(text, str):
+        return ""
+    
+    # Remove internal markers like <thought>, <channel|>, etc.
+    text = re.sub(r'<[a-z_|\d]+>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'</[a-z_|\d]+>', '', text, flags=re.IGNORECASE)
+    
+    # Remove URLs and markdown links (can cause model to follow them)
+    text = re.sub(r'\[.*?\]\(.*?\)', '', text)  # Remove [text](url)
+    text = re.sub(r'http\S+', '', text)  # Remove bare URLs
+    
+    # Remove stray markdown formatting that might indicate confused output
+    text = re.sub(r'^#+\s+.*$', '', text, flags=re.MULTILINE)  # Remove headers
+    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)  # Remove numbered lists
+    
+    # Clean up multiple spaces/newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r' {2,}', ' ', text)  # Remove multiple spaces
+    
+    text = text.strip()
+    
+    # Validate response looks reasonable (not just junk)
+    if len(text) < 3:
+        return ""
+    
+    return text
+
+
+# =========================
 # OLLAMA CALL
 # =========================
 def ask_ollama(prompt, system_prompt, history=None, images=None):
 
+    # Build formatted history with better delimiters
     history_text = ""
-
     if history:
-        history_text = "\n".join([f"{r[0]}: {r[1]}" for r in history])
+        history_lines = []
+        for role, content in history:
+            # Limit history entry length and sanitize
+            content_clean = content.strip()[:500] if content else ""
+            if content_clean:
+                history_lines.append(f"{role.capitalize()}: {content_clean}")
+        history_text = "\n".join(history_lines)
 
-    full_prompt = f"""System:
+    # Build a clearer prompt structure
+    history_section = f"Conversation history:\n{history_text}\n" if history_text else ""
+    
+    full_prompt = f"""You are a helpful Discord assistant.
+
 {system_prompt}
 
-Conversation history:
-{history_text}
+{history_section}
+Respond to the following user message:
 
-User:
 {prompt}
 
-Assistant:
+Provide a helpful and direct response:
 """
 
     payload = {
@@ -251,7 +295,8 @@ async def on_message(message):
 
     save_message(channel_name, "user", prompt)
 
-    history = load_recent_messages(channel_name, limit=100)
+    # Load recent messages (limited to prevent context confusion)
+    history = load_recent_messages(channel_name, limit=10)
 
     images = []
 
@@ -273,6 +318,7 @@ async def on_message(message):
                 images=images
             )
 
+        answer = clean_response(answer)
         save_message(channel_name, "assistant", answer)
 
         if len(answer) > 1800:
