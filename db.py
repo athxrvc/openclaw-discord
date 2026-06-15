@@ -150,6 +150,14 @@ def _resolve_channel_code(conn, channel_name: str) -> str:
     return _get_or_create_channel_code(conn, channel_name)
 
 
+def ensure_channel(channel_name: str) -> str:
+    conn = get_connection()
+    try:
+        return _resolve_channel_code(conn, channel_name)
+    finally:
+        conn.close()
+
+
 def save_message(channel: str, role: str, content: str) -> None:
     try:
         conn = get_connection()

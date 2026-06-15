@@ -6,7 +6,7 @@ import discord
 
 from dotenv import load_dotenv
 from channel_modes import get_channel_mode
-from db import save_message, load_recent_messages
+from db import save_message, load_recent_messages, ensure_channel
 from memory_manager import check_and_summarise, build_memory_context
 from llm import ask_model, clean_response, summarise_with_model, set_current_model, get_current_model
 
@@ -136,6 +136,12 @@ async def on_message(message):
     if content.startswith("!addchn"):
         channel_arg = content[len("!addchn"):].strip()
         target_channel = normalize_channel_name(channel_arg) if channel_arg else channel_name
+
+        try:
+            ensure_channel(target_channel)
+        except Exception as e:
+            await message.channel.send(f"Channel enabled, but DB channel sync failed: {str(e)}")
+            return
 
         if target_channel in disabled_channels:
             disabled_channels.remove(target_channel)
