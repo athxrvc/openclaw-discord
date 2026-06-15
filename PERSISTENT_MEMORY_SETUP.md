@@ -6,7 +6,7 @@ This project uses PostgreSQL + Prisma-backed tables to persist chat history and 
 ## What Is Included
 
 - PostgreSQL connection support through `DATABASE_URL` or fallback `DB_*` environment variables
-- Prisma schema for `Message` and `Summary`
+- Prisma schema for `Channel`, `Message`, and `Summary`
 - Centralized SQL access in `db.py`
 - Summary pipeline orchestration in `memory_manager.py`
 - LLM request/cleanup module in `llm.py`
@@ -28,7 +28,7 @@ This project uses PostgreSQL + Prisma-backed tables to persist chat history and 
 ### `Message`
 
 - `id`: auto-increment primary key
-- `channelName`: normalized Discord channel name
+- `channelCode`: stable channel lookup code
 - `role`: `user` or `assistant`
 - `content`: message text
 - `createdAt`: insert timestamp
@@ -36,10 +36,17 @@ This project uses PostgreSQL + Prisma-backed tables to persist chat history and 
 ### `Summary`
 
 - `id`: auto-increment primary key
-- `channelName`: normalized Discord channel name
+- `channelCode`: stable channel lookup code
 - `summary`: compressed long-term memory text
 - `startMessageId`: first message id included in this summary batch
 - `endMessageId`: last message id included in this summary batch
+- `createdAt`: insert timestamp
+
+### `Channel`
+
+- `id`: auto-increment primary key
+- `code`: generated unique code used by `Message` and `Summary`
+- `name`: normalized Discord channel name
 - `createdAt`: insert timestamp
 
 ## Runtime Behavior
@@ -57,4 +64,4 @@ When a message is sent in an AI-enabled channel:
 ## Notes
 
 - Model selection is process-local (in-memory), exposed via `!switch` and visible in `!status`.
-- Persistent memory is channel-scoped through `channelName` on both tables.
+- Persistent memory is channel-scoped through `channelCode`, with names resolved through the `Channel` table.
