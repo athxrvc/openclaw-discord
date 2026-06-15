@@ -6,19 +6,34 @@ datasource db {
   provider = "postgresql"
 }
 
+model Channel {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  messages  Message[]
+  summaries Summary[]
+}
+
 model Message {
-  id           Int      @id @default(autoincrement())
-  channelName  String
-  role         String
-  content      String
-  createdAt    DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  channelCode String
+  channel     Channel  @relation(fields: [channelCode], references: [code])
+  role        String
+  content     String
+  createdAt   DateTime @default(now())
+
+  @@index([channelCode])
 }
 
 model Summary {
   id             Int      @id @default(autoincrement())
-  channelName    String
+  channelCode    String
+  channel        Channel  @relation(fields: [channelCode], references: [code])
   summary        String
   startMessageId Int
   endMessageId   Int
   createdAt      DateTime @default(now())
+
+  @@index([channelCode])
 }
