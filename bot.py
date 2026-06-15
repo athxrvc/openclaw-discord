@@ -1,14 +1,12 @@
 import os
 import base64
 import json
-import socket
-from collections import deque
 import requests
 import discord
 
 from dotenv import load_dotenv
 from channel_modes import get_channel_mode
-from db import save_message, load_recent_messages
+from db import save_message, load_recent_messages, ensure_channel
 from memory_manager import check_and_summarise, build_memory_context
 from llm import ask_model, clean_response, summarise_with_model, set_current_model, get_current_model
 
@@ -20,7 +18,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
-_instance_lock_socket = None
 
 ENABLED_CHANNELS_FILE = os.path.join("assets", "enabled_channels.json")
 
@@ -59,23 +56,6 @@ def save_disabled_channels(channels: set[str]) -> None:
 
 
 disabled_channels = load_disabled_channels()
-processed_message_ids = set()
-processed_message_order = deque(maxlen=5000)
-
-
-def acquire_single_instance_lock() -> None:
-    global _instance_lock_socket
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind(("127.0.0.1", 47977))
-    except OSError:
-        print("Another bot instance is already running.")
-        sock.close()
-        raise SystemExit(1)
-
-    sock.listen(1)
-    _instance_lock_socket = sock
 
 
 # =========================
@@ -101,16 +81,6 @@ async def on_message(message):
 
     if message.author == client.user:
         return
-
-    message_id = getattr(message, "id", None)
-    if message_id is not None:
-        if message_id in processed_message_ids:
-            return
-        processed_message_ids.add(message_id)
-        if len(processed_message_order) == processed_message_order.maxlen:
-            oldest = processed_message_order.popleft()
-            processed_message_ids.discard(oldest)
-        processed_message_order.append(message_id)
 
     content = message.content.strip()
     channel_name = normalize_channel_name(getattr(message.channel, "name", ""))
@@ -166,6 +136,12 @@ async def on_message(message):
     if content.startswith("!addchn"):
         channel_arg = content[len("!addchn"):].strip()
         target_channel = normalize_channel_name(channel_arg) if channel_arg else channel_name
+
+        try:
+            ensure_channel(target_channel)
+        except Exception as e:
+            await message.channel.send(f"Channel enabled, but DB channel sync failed: {str(e)}")
+            return
 
         if target_channel in disabled_channels:
             disabled_channels.remove(target_channel)
@@ -246,10 +222,5 @@ async def on_message(message):
     except Exception as e:
         await message.channel.send(f"Error: {str(e)}")
 
-if __name__ == "__main__":
-    acquire_single_instance_lock()
-    try:
-        client.run(TOKEN)
-    finally:
-        if _instance_lock_socket is not None:
-            _instance_lock_socket.close()
+
+client.run(TOKEN)
