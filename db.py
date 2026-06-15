@@ -66,42 +66,75 @@ def _ensure_schema(conn) -> None:
         """
     )
 
-    # Backfill the Channel lookup table from old channelName values.
+    # Legacy backfill for deployments that still have channelName columns.
+    # Newer schemas have dropped these columns, so skip safely when absent.
     cur.execute(
         """
-        SELECT DISTINCT "channelName"
-        FROM "Message"
-        WHERE "channelName" IS NOT NULL
-        UNION
-        SELECT DISTINCT "channelName"
-        FROM "Summary"
-        WHERE "channelName" IS NOT NULL
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'Message' AND column_name = 'channelName'
+        )
         """
     )
-
-    channel_rows = [row[0] for row in cur.fetchall() if row and row[0]]
-    for channel_name in channel_rows:
-        _get_or_create_channel_code(conn, channel_name)
+    message_has_channel_name = cur.fetchone()[0]
 
     cur.execute(
         """
-        UPDATE "Message" m
-        SET "channelCode" = c.code
-        FROM "Channel" c
-        WHERE m."channelCode" IS NULL
-          AND m."channelName" = c.name
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'Summary' AND column_name = 'channelName'
+        )
         """
     )
+    summary_has_channel_name = cur.fetchone()[0]
 
-    cur.execute(
-        """
-        UPDATE "Summary" s
-        SET "channelCode" = c.code
-        FROM "Channel" c
-        WHERE s."channelCode" IS NULL
-          AND s."channelName" = c.name
-        """
-    )
+    if message_has_channel_name or summary_has_channel_name:
+        channel_rows = []
+
+        if message_has_channel_name:
+            cur.execute(
+                """
+                SELECT DISTINCT "channelName"
+                FROM "Message"
+                WHERE "channelName" IS NOT NULL
+                """
+            )
+            channel_rows.extend([row[0] for row in cur.fetchall() if row and row[0]])
+
+        if summary_has_channel_name:
+            cur.execute(
+                """
+                SELECT DISTINCT "channelName"
+                FROM "Summary"
+                WHERE "channelName" IS NOT NULL
+                """
+            )
+            channel_rows.extend([row[0] for row in cur.fetchall() if row and row[0]])
+
+        for channel_name in set(channel_rows):
+            _get_or_create_channel_code(conn, channel_name)
+
+        if message_has_channel_name:
+            cur.execute(
+                """
+                UPDATE "Message" m
+                SET "channelCode" = c.code
+                FROM "Channel" c
+                WHERE m."channelCode" IS NULL
+                  AND m."channelName" = c.name
+                """
+            )
+
+        if summary_has_channel_name:
+            cur.execute(
+                """
+                UPDATE "Summary" s
+                SET "channelCode" = c.code
+                FROM "Channel" c
+                WHERE s."channelCode" IS NULL
+                  AND s."channelName" = c.name
+                """
+            )
 
     conn.commit()
     _schema_ready = True

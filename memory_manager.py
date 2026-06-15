@@ -74,7 +74,11 @@ def check_and_summarise(channel_name: str, ask_llm_func):
 
 
 def build_memory_context(channel_name: str, recent_messages):
-    summaries = load_summaries(channel_name, limit=10)
+    try:
+        summaries = load_summaries(channel_name, limit=10)
+    except Exception as e:
+        print(f"[MEMORY LOAD ERROR] {e}")
+        summaries = []
 
     summary_text = "\n".join([f"- {s}" for s in summaries]) or "None"
 
