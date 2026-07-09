@@ -63,5 +63,5 @@ When a message is sent in an AI-enabled channel:
 
 ## Notes
 
-- Model selection is process-local (in-memory), exposed via `!switch` and visible in `!status`.
+-- Model selection is handled by the configured gateway; the bot does not switch models at runtime.
 - Persistent memory is channel-scoped through `channelCode`, with names resolved through the `Channel` table.

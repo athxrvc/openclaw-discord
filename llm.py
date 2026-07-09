@@ -2,18 +2,7 @@ import os
 import re
 import requests
 
-DEFAULT_MODEL = "maxwellb/gemma4-12b-it-oym"
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
-_current_model = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
-
-
-def set_current_model(model_name: str) -> None:
-    global _current_model
-    _current_model = model_name
-
-
-def get_current_model() -> str:
-    return _current_model
+API_GATEWAY_URL = os.getenv("API_GATEWAY_URL") or "http://localhost:11434/api/generate"
 
 
 def clean_response(text: str) -> str:
@@ -51,7 +40,7 @@ def _base_inference_url(url: str) -> str:
 
 
 def _extract_model_text(data: dict) -> str:
-    """Extract text from Ollama, llama.cpp, or OpenAI-compatible responses."""
+    """Extract text from the inference gateway, llama.cpp, or OpenAI-compatible responses."""
     if not isinstance(data, dict):
         return ""
 
@@ -103,7 +92,7 @@ If an image is provided, describe only what is visible and avoid guessing.
 
 
 def _build_messages(system_prompt: str, prompt: str, history=None, images=None):
-    """Build chat messages for Ollama chat-style APIs."""
+    """Build chat messages for gateway chat-style APIs."""
     messages = []
 
     base_system = (
@@ -128,10 +117,10 @@ def _build_messages(system_prompt: str, prompt: str, history=None, images=None):
     return messages
 
 
-def _to_openai_messages(ollama_messages):
-    """Convert Ollama-style messages to OpenAI-compatible messages for v1 endpoints."""
+def _to_openai_messages(gateway_messages):
+    """Convert gateway-style messages to OpenAI-compatible messages for v1 endpoints."""
     openai_messages = []
-    for msg in ollama_messages:
+    for msg in gateway_messages:
         role = msg.get("role", "user")
         content = msg.get("content", "")
         images = msg.get("images") or []
@@ -156,19 +145,18 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
     effective_history = [] if images else (history or [])
     messages = _build_messages(system_prompt, prompt, history=effective_history, images=images)
 
-    ollama_chat_payload = {
-        "model": _current_model,
+    chat_payload = {
         "messages": messages,
         "stream": False,
         "options": {"temperature": 0.2},
     }
 
-    primary_chat_url = _normalize_chat_url(OLLAMA_URL)
-    base_url = _base_inference_url(OLLAMA_URL)
+    primary_chat_url = _normalize_chat_url(API_GATEWAY_URL)
+    base_url = _base_inference_url(API_GATEWAY_URL)
     v1_chat_url = f"{base_url}/v1/chat/completions"
 
     try:
-        response = requests.post(primary_chat_url, json=ollama_chat_payload, timeout=300)
+        response = requests.post(primary_chat_url, json=chat_payload, timeout=300)
         response.raise_for_status()
         text = _extract_model_text(response.json())
         if text.strip():
@@ -177,7 +165,6 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
         pass
 
     openai_chat_payload = {
-        "model": _current_model,
         "messages": _to_openai_messages(messages),
         "temperature": 0.2,
         "stream": False,
@@ -192,7 +179,6 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
         pass
 
     generate_payload = {
-        "model": _current_model,
         "prompt": _build_generate_prompt(prompt, system_prompt, history=effective_history),
         "stream": False,
         "options": {"temperature": 0.2},
@@ -208,7 +194,7 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
 
 
 def summarise_with_model(summary_prompt: str) -> str:
-    """Generate a compact summary using the active model."""
+    """Generate a compact summary using the configured inference gateway."""
     summary_system_prompt = (
         "You are a memory compression assistant. "
         "Return concise, factual summaries only."

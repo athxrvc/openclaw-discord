@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from channel_modes import get_channel_mode
 from db import save_message, load_recent_messages, ensure_channel
 from memory_manager import check_and_summarise, build_memory_context
-from llm import ask_model, clean_response, summarise_with_model, set_current_model, get_current_model
+from llm import ask_model, clean_response, summarise_with_model
 
 load_dotenv()
 
@@ -89,12 +89,10 @@ async def on_message(message):
     # STATUS
     # =========================
     if content == "!status":
-        current_model = get_current_model()
         ai_enabled = "No" if channel_name in disabled_channels else "Yes"
         channel_list = ", ".join(sorted(disabled_channels)) or "None"
 
         await message.channel.send(
-            f"Model: {current_model}\n"
             f"Bot: Online\n"
             f"Current Channel: {channel_name}\n"
             f"AI Enabled: {ai_enabled}\n"
@@ -102,20 +100,7 @@ async def on_message(message):
         )
         return
 
-    # =========================
-    # SWITCH MODEL
-    # =========================
-    if content.startswith("!switch"):
-        new_model = content[len("!switch"):].strip()
-
-        if not new_model:
-            await message.channel.send("Usage: !switch <model_name>")
-            return
-
-        set_current_model(new_model)
-        current_model = get_current_model()
-        await message.channel.send(f"Switched model to: `{current_model}`")
-        return
+    # model switching removed; gateway determines model
 
     # =========================
     # DISABLE CHANNEL
