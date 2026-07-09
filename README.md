@@ -69,6 +69,12 @@ For image requests, the bot prioritizes visual fidelity and avoids speculative a
 - `!status`: Shows online state and AI channel state
 - `!addchn <channel_name>`: Enables AI for a channel
 - `!removechn <channel_name>`: Disables AI for a channel
+
+**Gateway Setup**
+
+- **Env var:** set `API_GATEWAY_URL` to your gateway endpoint (e.g. `https://your-gateway.example/v1`). The bot reads this at runtime.
+- **Local gateway:** if you want a local inference gateway (LiteLLM) and an externally reachable URL, follow the LiteLLM + Cloudflare Tunnel guide in this repo: https://github.com/athxrvc/LiteLLM-setup
+
 - `!addchn <channel_name>`: Enables AI for a channel
 - `!removechn <channel_name>`: Disables AI for a channel
 
