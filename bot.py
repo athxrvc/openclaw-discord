@@ -100,7 +100,7 @@ async def on_message(message):
         )
         return
 
-    # model switching removed; gateway determines model
+    
 
     # =========================
     # DISABLE CHANNEL

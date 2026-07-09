@@ -10,14 +10,11 @@ def clean_response(text: str) -> str:
     if not text or not isinstance(text, str):
         return ""
 
-    # Remove internal markers like <thought>, <channel|>, etc.
     text = re.sub(r"<[a-z_|\d]+>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"</[a-z_|\d]+>", "", text, flags=re.IGNORECASE)
 
-    # Remove bare URLs that look like model hallucinations.
     text = re.sub(r"https?://\S+", "", text)
 
-    # Clean up multiple spaces/newlines.
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r" {2,}", " ", text)
 
