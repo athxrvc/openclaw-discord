@@ -18,7 +18,7 @@ This project uses PostgreSQL + Prisma-backed tables to persist chat history and 
 - `bot.py`: Discord events/commands and runtime flow orchestration
 - `db.py`: all message + summary database reads/writes
 - `memory_manager.py`: summary prompt building and summarization control flow
-- `llm.py`: model calls (`ask_model`), response cleanup, model switching state
+ - `llm.py`: model calls (`ask_model`) and response cleanup
 - `prisma/prisma/schema.prisma`: persistent model definitions
 - `prisma/prisma.config.ts`: Prisma config that reads the root `.env`
 - `prisma/package.json`: Prisma scripts (`validate`, `generate`, `db:push`)
@@ -63,5 +63,6 @@ When a message is sent in an AI-enabled channel:
 
 ## Notes
 
-- Model selection is process-local (in-memory), exposed via `!switch` and visible in `!status`.
+- Model selection is handled by the configured gateway; the bot does not switch models at runtime.
+- Gateway setup: to run a local inference gateway (LiteLLM) and expose it via Cloudflare Tunnel, see: https://github.com/athxrvc/LiteLLM-setup
 - Persistent memory is channel-scoped through `channelCode`, with names resolved through the `Channel` table.

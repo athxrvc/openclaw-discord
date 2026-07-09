@@ -1,3 +1,9 @@
+"""Memory management helpers for long-term conversation summaries.
+
+This module builds summarization prompts and triggers periodic
+compression of message windows into long-term summaries stored in the DB.
+"""
+
 from db import (
     count_messages,
     get_unsummarised_messages,
@@ -16,6 +22,10 @@ SUMMARY_THRESHOLD = 100
 # SUMMARISATION BUILDER
 # =========================
 def build_summary_prompt(messages):
+    """Build a concise summarization prompt from message rows.
+
+    `messages` are expected as rows of `(id, role, content)`.
+    """
     text = "\n".join([f"{role}: {content}" for _, role, content in messages])
 
     return f"""
@@ -38,9 +48,10 @@ Conversation:
 # MAIN CHECK FUNCTION
 # =========================
 def check_and_summarise(channel_name: str, ask_llm_func):
-    """
-    Call this after saving each message.
-    ask_llm_func must be a function(prompt) -> response
+    """Trigger summarisation when a channel exceeds the threshold.
+
+    `ask_llm_func` is a callable that takes a prompt string and returns
+    a summary string produced by the configured gateway.
     """
 
     count = count_messages(channel_name)
@@ -74,6 +85,10 @@ def check_and_summarise(channel_name: str, ask_llm_func):
 
 
 def build_memory_context(channel_name: str, recent_messages):
+    """Assemble a combined long-term + recent conversation context.
+
+    Returns a string suitable for inclusion in system prompts.
+    """
     try:
         summaries = load_summaries(channel_name, limit=10)
     except Exception as e:

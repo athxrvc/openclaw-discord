@@ -1,23 +1,23 @@
 # OpenClaw Discord Bot
 
-OpenClaw Discord Bot is a local-first Discord assistant powered by Ollama.
-It supports text and image workflows, channel-aware behavior, runtime model switching, and persistent conversation memory. Later to be integrated with OpenClaw
+OpenClaw Discord Bot is a local-first Discord assistant that sends inference requests to a configured model gateway.
+It supports text and image workflows, channel-aware behavior, and persistent conversation memory. Later to be integrated with OpenClaw
 
 Pipeline:
-Discord -> Python Bot -> Ollama -> Local Model -> PostgreSQL Database -> Discord response.
+Discord -> Python Bot -> Model Gateway -> Model -> PostgreSQL Database -> Discord response.
 
 ## Project Overview
 
 - Designed for Discord communities that want a self-hosted AI assistant.
-- Runs with local model inference through Ollama.
+- Runs inference through a local or remote model gateway configured via environment variables.
 - Maintains short-term context and long-term memory per channel.
 - Supports both conversational and image-based prompting.
 
 ## Core Capabilities
 
-- Chat with local Ollama models directly from Discord
+- Chat with local or remote models via the configured gateway
 - Image understanding for common image formats
-- Runtime model switching without restarting the bot
+-- Gateway-selected model (no runtime switching from the bot)
 - Channel-level AI enable/disable controls
 - Channel-specific assistant behavior modes
 - Persistent message history in PostgreSQL
@@ -35,10 +35,10 @@ Bot Runtime
   |-- Load context and summaries from PostgreSQL
   |-- Optional image attachment processing
   v
-Ollama API
+Model Gateway
   |
   v
-Configured Local Model
+Configured Model
   |
   v
 Bot Runtime
@@ -58,7 +58,7 @@ When users send messages in AI-enabled channels:
 
 1. Recent channel context is loaded.
 2. Long-term summary memory is injected for text conversations.
-3. The bot sends the request to the active local model.
+3. The bot sends the request to the configured model gateway.
 4. The response is cleaned and posted back to Discord.
 5. Messages are persisted and periodically summarized.
 
@@ -66,8 +66,15 @@ For image requests, the bot prioritizes visual fidelity and avoids speculative a
 
 ## User Commands
 
-- `!status`: Shows online state, current model, and AI channel state
-- `!switch <model_name>`: Changes the active model at runtime
+- `!status`: Shows online state and AI channel state
+- `!addchn <channel_name>`: Enables AI for a channel
+- `!removechn <channel_name>`: Disables AI for a channel
+
+**Gateway Setup**
+
+- **Env var:** set `API_GATEWAY_URL` to your gateway endpoint (e.g. `https://your-gateway.example/v1`). The bot reads this at runtime.
+- **Local gateway:** if you want a local inference gateway (LiteLLM) and an externally reachable URL, follow the LiteLLM + Cloudflare Tunnel guide in this repo: https://github.com/athxrvc/LiteLLM-setup
+
 - `!addchn <channel_name>`: Enables AI for a channel
 - `!removechn <channel_name>`: Disables AI for a channel
 

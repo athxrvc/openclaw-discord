@@ -1,3 +1,10 @@
+"""Database helpers for storing messages, channels, and summaries.
+
+Provides a lightweight interface to PostgreSQL for the bot's
+message and summary persistence. Public functions return Python
+objects and handle connection management.
+"""
+
 import os
 import hashlib
 import psycopg2
@@ -7,11 +14,21 @@ _schema_ready = False
 
 
 def _build_channel_code(channel_name: str, extra: str = "") -> str:
+    """Create a short stable channel code from a channel name.
+
+    This is an internal helper used to generate unique `channelCode`
+    values for storage.
+    """
     digest = hashlib.sha1(f"{channel_name}{extra}".encode("utf-8")).hexdigest()[:10]
     return f"chn_{digest}"
 
 
 def get_connection():
+    """Return a new psycopg2 connection using env vars or `DATABASE_URL`.
+
+    Picks `DATABASE_URL` if present; otherwise uses `DB_HOST`,
+    `DB_USER`, etc.
+    """
     database_url = os.getenv("DATABASE_URL")
     if database_url:
         return psycopg2.connect(database_url)
@@ -32,6 +49,11 @@ def get_connection():
 
 
 def _ensure_schema(conn) -> None:
+    """Ensure required DB tables/columns/indexes exist.
+
+    This function is idempotent and performs lightweight migrations
+    to backfill legacy columns when present.
+    """
     global _schema_ready
 
     if _schema_ready:
@@ -141,6 +163,10 @@ def _ensure_schema(conn) -> None:
 
 
 def _get_or_create_channel_code(conn, channel_name: str) -> str:
+    """Return an existing channel code or create a new one.
+
+    Ensures a unique `code` exists for the given channel `name`.
+    """
     cur = conn.cursor()
 
     cur.execute(
@@ -179,11 +205,16 @@ def _get_or_create_channel_code(conn, channel_name: str) -> str:
 
 
 def _resolve_channel_code(conn, channel_name: str) -> str:
+    """Ensure DB schema and return a channel code for `channel_name`."""
     _ensure_schema(conn)
     return _get_or_create_channel_code(conn, channel_name)
 
 
 def ensure_channel(channel_name: str) -> str:
+    """Ensure a channel exists in the DB and return its channel code.
+
+    This helper opens and closes a DB connection for the operation.
+    """
     conn = get_connection()
     try:
         return _resolve_channel_code(conn, channel_name)
@@ -192,6 +223,10 @@ def ensure_channel(channel_name: str) -> str:
 
 
 def save_message(channel: str, role: str, content: str) -> None:
+    """Persist a message for `channel` with given `role` and `content`.
+
+    Errors are caught and logged to stdout to avoid crashing the bot.
+    """
     try:
         conn = get_connection()
         channel_code = _resolve_channel_code(conn, channel)
@@ -212,6 +247,10 @@ def save_message(channel: str, role: str, content: str) -> None:
 
 
 def load_recent_messages(channel: str, limit: int = 100):
+    """Load recent `(role, content)` tuples for a channel.
+
+    Returns messages in chronological order (oldest first).
+    """
     try:
         conn = get_connection()
         channel_code = _resolve_channel_code(conn, channel)
@@ -238,6 +277,7 @@ def load_recent_messages(channel: str, limit: int = 100):
 
 
 def count_messages(channel_name: str) -> int:
+    """Return the number of messages stored for `channel_name`."""
     conn = get_connection()
     channel_code = _resolve_channel_code(conn, channel_name)
     cur = conn.cursor()
@@ -257,6 +297,11 @@ def count_messages(channel_name: str) -> int:
 
 
 def get_unsummarised_messages(channel_name: str, start_id: int | None = None, limit: int = 100):
+    """Return rows of unsummarised messages for `channel_name`.
+
+    Each row is `(id, role, content)`. If `start_id` is provided, only
+    messages with id > start_id are returned.
+    """
     conn = get_connection()
     channel_code = _resolve_channel_code(conn, channel_name)
     cur = conn.cursor()
@@ -291,6 +336,7 @@ def get_unsummarised_messages(channel_name: str, start_id: int | None = None, li
 
 
 def get_latest_summary(channel_name: str):
+    """Return the most recent summary row `(startMessageId, endMessageId)` or None."""
     conn = get_connection()
     channel_code = _resolve_channel_code(conn, channel_name)
     cur = conn.cursor()
@@ -313,6 +359,7 @@ def get_latest_summary(channel_name: str):
 
 
 def save_summary(channel_name: str, summary: str, start_id: int, end_id: int):
+    """Persist a computed summary for a channel covering start_id→end_id."""
     conn = get_connection()
     channel_code = _resolve_channel_code(conn, channel_name)
     cur = conn.cursor()
@@ -331,6 +378,7 @@ def save_summary(channel_name: str, summary: str, start_id: int, end_id: int):
 
 
 def load_summaries(channel_name: str, limit: int = 10):
+    """Load a list of recent summary strings for `channel_name`."""
     conn = get_connection()
     channel_code = _resolve_channel_code(conn, channel_name)
     cur = conn.cursor()

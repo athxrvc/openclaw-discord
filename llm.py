@@ -1,19 +1,17 @@
+"""Model gateway integration helpers.
+
+Provides `ask_model` and helpers to translate bot prompts into requests
+to an inference gateway that exposes Ollama/OpenAI-compatible endpoints.
+The gateway URL is read from `API_GATEWAY_URL`.
+"""
+
 import os
 import re
 import requests
 
-DEFAULT_MODEL = "maxwellb/gemma4-12b-it-oym"
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
-_current_model = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
-
-
-def set_current_model(model_name: str) -> None:
-    global _current_model
-    _current_model = model_name
-
-
-def get_current_model() -> str:
-    return _current_model
+API_GATEWAY_URL = os.getenv("API_GATEWAY_URL") or "http://localhost:11434/api/generate"
+# Optional model name to request from the gateway. If present, include in payloads.
+MODEL_NAME = os.getenv("API_MODEL")
 
 
 def clean_response(text: str) -> str:
@@ -21,14 +19,11 @@ def clean_response(text: str) -> str:
     if not text or not isinstance(text, str):
         return ""
 
-    # Remove internal markers like <thought>, <channel|>, etc.
     text = re.sub(r"<[a-z_|\d]+>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"</[a-z_|\d]+>", "", text, flags=re.IGNORECASE)
 
-    # Remove bare URLs that look like model hallucinations.
     text = re.sub(r"https?://\S+", "", text)
 
-    # Clean up multiple spaces/newlines.
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r" {2,}", " ", text)
 
@@ -36,7 +31,11 @@ def clean_response(text: str) -> str:
 
 
 def _normalize_chat_url(url: str) -> str:
-    """Convert generate endpoint to chat endpoint for multimodal fidelity."""
+    """Convert a '/api/generate' url to the corresponding '/api/chat' url.
+
+    This allows using chat-style endpoints when available for better
+    fidelity with message arrays and images.
+    """
     if url.endswith("/api/generate"):
         return url[: -len("/api/generate")] + "/api/chat"
     return url
@@ -44,14 +43,18 @@ def _normalize_chat_url(url: str) -> str:
 
 def _base_inference_url(url: str) -> str:
     """Return base server URL without known endpoint suffixes."""
-    for suffix in ("/api/generate", "/api/chat", "/v1/chat/completions", "/v1/completions"):
+    for suffix in ("/api/generate", "/api/chat", "/v1/chat/completions", "/v1/completions", "/v1"):
         if url.endswith(suffix):
             return url[: -len(suffix)]
     return url.rstrip("/")
 
 
 def _extract_model_text(data: dict) -> str:
-    """Extract text from Ollama, llama.cpp, or OpenAI-compatible responses."""
+    """Extract textual content from varied gateway response shapes.
+
+    Supports legacy Ollama-style responses, OpenAI v1 responses, and
+    other simple responses containing `response` or `content` fields.
+    """
     if not isinstance(data, dict):
         return ""
 
@@ -79,6 +82,10 @@ def _extract_model_text(data: dict) -> str:
 
 
 def _build_generate_prompt(prompt: str, system_prompt: str, history=None) -> str:
+    """Construct a plain-text prompt for non-chat generate endpoints.
+
+    Includes a short history excerpt when available.
+    """
     history_text = ""
     if history:
         history_lines = []
@@ -103,7 +110,11 @@ If an image is provided, describe only what is visible and avoid guessing.
 
 
 def _build_messages(system_prompt: str, prompt: str, history=None, images=None):
-    """Build chat messages for Ollama chat-style APIs."""
+    """Build OpenAI-compatible chat messages for the gateway.
+
+    Returns a list of message dicts with `role` and `content` keys, and
+    includes image data when present.
+    """
     messages = []
 
     base_system = (
@@ -128,10 +139,10 @@ def _build_messages(system_prompt: str, prompt: str, history=None, images=None):
     return messages
 
 
-def _to_openai_messages(ollama_messages):
-    """Convert Ollama-style messages to OpenAI-compatible messages for v1 endpoints."""
+def _to_openai_messages(gateway_messages):
+    """Convert gateway-style messages to OpenAI-compatible messages for v1 endpoints."""
     openai_messages = []
-    for msg in ollama_messages:
+    for msg in gateway_messages:
         role = msg.get("role", "user")
         content = msg.get("content", "")
         images = msg.get("images") or []
@@ -156,32 +167,18 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
     effective_history = [] if images else (history or [])
     messages = _build_messages(system_prompt, prompt, history=effective_history, images=images)
 
-    ollama_chat_payload = {
-        "model": _current_model,
-        "messages": messages,
-        "stream": False,
-        "options": {"temperature": 0.2},
-    }
-
-    primary_chat_url = _normalize_chat_url(OLLAMA_URL)
-    base_url = _base_inference_url(OLLAMA_URL)
+    # Prefer OpenAI-compatible chat endpoint on the gateway for best support.
+    base_url = _base_inference_url(API_GATEWAY_URL)
     v1_chat_url = f"{base_url}/v1/chat/completions"
 
-    try:
-        response = requests.post(primary_chat_url, json=ollama_chat_payload, timeout=300)
-        response.raise_for_status()
-        text = _extract_model_text(response.json())
-        if text.strip():
-            return text
-    except Exception:
-        pass
-
     openai_chat_payload = {
-        "model": _current_model,
         "messages": _to_openai_messages(messages),
         "temperature": 0.2,
         "stream": False,
     }
+    if MODEL_NAME:
+        openai_chat_payload["model"] = MODEL_NAME
+
     try:
         response = requests.post(v1_chat_url, json=openai_chat_payload, timeout=300)
         response.raise_for_status()
@@ -191,8 +188,26 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
     except Exception:
         pass
 
+    # Fallback to gateway's chat (Ollama-style) endpoint if available.
+    chat_payload = {
+        "model": MODEL_NAME,
+        "messages": messages,
+        "stream": False,
+        "options": {"temperature": 0.2},
+    }
+
+    primary_chat_url = _normalize_chat_url(API_GATEWAY_URL)
+    try:
+        response = requests.post(primary_chat_url, json=chat_payload, timeout=300)
+        response.raise_for_status()
+        text = _extract_model_text(response.json())
+        if text.strip():
+            return text
+    except Exception:
+        pass
+
     generate_payload = {
-        "model": _current_model,
+        "model": MODEL_NAME,
         "prompt": _build_generate_prompt(prompt, system_prompt, history=effective_history),
         "stream": False,
         "options": {"temperature": 0.2},
@@ -208,7 +223,7 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
 
 
 def summarise_with_model(summary_prompt: str) -> str:
-    """Generate a compact summary using the active model."""
+    """Generate a compact summary using the configured inference gateway."""
     summary_system_prompt = (
         "You are a memory compression assistant. "
         "Return concise, factual summaries only."
