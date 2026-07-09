@@ -1,3 +1,10 @@
+"""Model gateway integration helpers.
+
+Provides `ask_model` and helpers to translate bot prompts into requests
+to an inference gateway that exposes Ollama/OpenAI-compatible endpoints.
+The gateway URL is read from `API_GATEWAY_URL`.
+"""
+
 import os
 import re
 import requests
@@ -22,7 +29,11 @@ def clean_response(text: str) -> str:
 
 
 def _normalize_chat_url(url: str) -> str:
-    """Convert generate endpoint to chat endpoint for multimodal fidelity."""
+    """Convert a '/api/generate' url to the corresponding '/api/chat' url.
+
+    This allows using chat-style endpoints when available for better
+    fidelity with message arrays and images.
+    """
     if url.endswith("/api/generate"):
         return url[: -len("/api/generate")] + "/api/chat"
     return url
@@ -37,7 +48,11 @@ def _base_inference_url(url: str) -> str:
 
 
 def _extract_model_text(data: dict) -> str:
-    """Extract text from the inference gateway, llama.cpp, or OpenAI-compatible responses."""
+    """Extract textual content from varied gateway response shapes.
+
+    Supports legacy Ollama-style responses, OpenAI v1 responses, and
+    other simple responses containing `response` or `content` fields.
+    """
     if not isinstance(data, dict):
         return ""
 
@@ -65,6 +80,10 @@ def _extract_model_text(data: dict) -> str:
 
 
 def _build_generate_prompt(prompt: str, system_prompt: str, history=None) -> str:
+    """Construct a plain-text prompt for non-chat generate endpoints.
+
+    Includes a short history excerpt when available.
+    """
     history_text = ""
     if history:
         history_lines = []
@@ -89,7 +108,11 @@ If an image is provided, describe only what is visible and avoid guessing.
 
 
 def _build_messages(system_prompt: str, prompt: str, history=None, images=None):
-    """Build chat messages for gateway chat-style APIs."""
+    """Build OpenAI-compatible chat messages for the gateway.
+
+    Returns a list of message dicts with `role` and `content` keys, and
+    includes image data when present.
+    """
     messages = []
 
     base_system = (

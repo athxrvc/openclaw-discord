@@ -1,3 +1,10 @@
+"""Discord bot runtime and command handlers.
+
+This module wires Discord events to the OpenClaw runtime: loading
+configuration, handling simple commands, preparing prompts, and
+calling the inference gateway through `llm.ask_model`.
+"""
+
 import os
 import base64
 import json
@@ -26,10 +33,20 @@ ENABLED_CHANNELS_FILE = os.path.join("assets", "enabled_channels.json")
 # CHANNEL HELPERS
 # =========================
 def normalize_channel_name(channel_name: str) -> str:
+    """Normalize a Discord channel name for storage and lookup.
+
+    Strips leading '#' and whitespace, and lowercases the name.
+    """
     return channel_name.strip().lower().lstrip("#")
 
 
 def load_disabled_channels() -> set[str]:
+    """Load the set of disabled channel names from disk.
+
+    The file at `ENABLED_CHANNELS_FILE` is expected to contain a JSON
+    list of channel names. Returns an empty set on error or when not
+    present.
+    """
     if not os.path.exists(ENABLED_CHANNELS_FILE):
         return set()
 
@@ -50,6 +67,10 @@ def load_disabled_channels() -> set[str]:
 
 
 def save_disabled_channels(channels: set[str]) -> None:
+    """Persist the set of disabled channels to disk.
+
+    Creates parent directories as needed and writes a sorted JSON list.
+    """
     os.makedirs(os.path.dirname(ENABLED_CHANNELS_FILE), exist_ok=True)
     with open(ENABLED_CHANNELS_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted(channels), f, indent=2)
@@ -62,6 +83,10 @@ disabled_channels = load_disabled_channels()
 # IMAGE HELPER
 # =========================
 def download_image_as_base64(url):
+    """Download an image and return it as a base64-encoded string.
+
+    Raises for non-2xx responses.
+    """
     response = requests.get(url)
     response.raise_for_status()
     return base64.b64encode(response.content).decode("utf-8")
