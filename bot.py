@@ -12,12 +12,18 @@ import requests
 import discord
 
 from dotenv import load_dotenv
+
+# Load environment variables before importing modules that read them at import-time
+load_dotenv()
+
 from channel_modes import get_channel_mode
 from db import save_message, load_recent_messages, ensure_channel
 from memory_manager import check_and_summarise, build_memory_context
 from llm import ask_model, clean_response, summarise_with_model
 
-load_dotenv()
+# Log resolved gateway for debugging startup environment
+import os as _os
+print(f"Using API_GATEWAY_URL={_os.getenv('API_GATEWAY_URL')}")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 

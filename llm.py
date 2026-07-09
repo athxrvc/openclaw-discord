@@ -10,6 +10,8 @@ import re
 import requests
 
 API_GATEWAY_URL = os.getenv("API_GATEWAY_URL") or "http://localhost:11434/api/generate"
+# Optional model name to request from the gateway. If present, include in payloads.
+MODEL_NAME = os.getenv("API_MODEL")
 
 
 def clean_response(text: str) -> str:
@@ -41,7 +43,7 @@ def _normalize_chat_url(url: str) -> str:
 
 def _base_inference_url(url: str) -> str:
     """Return base server URL without known endpoint suffixes."""
-    for suffix in ("/api/generate", "/api/chat", "/v1/chat/completions", "/v1/completions"):
+    for suffix in ("/api/generate", "/api/chat", "/v1/chat/completions", "/v1/completions", "/v1"):
         if url.endswith(suffix):
             return url[: -len(suffix)]
     return url.rstrip("/")
@@ -165,30 +167,18 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
     effective_history = [] if images else (history or [])
     messages = _build_messages(system_prompt, prompt, history=effective_history, images=images)
 
-    chat_payload = {
-        "messages": messages,
-        "stream": False,
-        "options": {"temperature": 0.2},
-    }
-
-    primary_chat_url = _normalize_chat_url(API_GATEWAY_URL)
+    # Prefer OpenAI-compatible chat endpoint on the gateway for best support.
     base_url = _base_inference_url(API_GATEWAY_URL)
     v1_chat_url = f"{base_url}/v1/chat/completions"
-
-    try:
-        response = requests.post(primary_chat_url, json=chat_payload, timeout=300)
-        response.raise_for_status()
-        text = _extract_model_text(response.json())
-        if text.strip():
-            return text
-    except Exception:
-        pass
 
     openai_chat_payload = {
         "messages": _to_openai_messages(messages),
         "temperature": 0.2,
         "stream": False,
     }
+    if MODEL_NAME:
+        openai_chat_payload["model"] = MODEL_NAME
+
     try:
         response = requests.post(v1_chat_url, json=openai_chat_payload, timeout=300)
         response.raise_for_status()
@@ -198,7 +188,26 @@ def ask_model(prompt: str, system_prompt: str, history=None, images=None) -> str
     except Exception:
         pass
 
+    # Fallback to gateway's chat (Ollama-style) endpoint if available.
+    chat_payload = {
+        "model": MODEL_NAME,
+        "messages": messages,
+        "stream": False,
+        "options": {"temperature": 0.2},
+    }
+
+    primary_chat_url = _normalize_chat_url(API_GATEWAY_URL)
+    try:
+        response = requests.post(primary_chat_url, json=chat_payload, timeout=300)
+        response.raise_for_status()
+        text = _extract_model_text(response.json())
+        if text.strip():
+            return text
+    except Exception:
+        pass
+
     generate_payload = {
+        "model": MODEL_NAME,
         "prompt": _build_generate_prompt(prompt, system_prompt, history=effective_history),
         "stream": False,
         "options": {"temperature": 0.2},
