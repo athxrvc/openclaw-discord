@@ -23,8 +23,8 @@ from llm import ask_model, clean_response, summarise_with_model
 
 # Log resolved model configuration for debugging startup environment
 import os as _os
-print(f"Using Google AI Studio model={_os.getenv('GOOGLE_MODEL') or 'gemini-2.0-flash'}")
-print(f"Google API key configured={bool(_os.getenv('GOOGLE_API_KEY') or _os.getenv('GOOGLE_AI_STUDIO_API_KEY'))}")
+print(f"AI provider={_os.getenv('AI_PROVIDER') or 'auto-detect'}")
+print(f"Model config: GOOGLE_MODEL={_os.getenv('GOOGLE_MODEL')}, OPENAI_MODEL={_os.getenv('OPENAI_MODEL')}, ANTHROPIC_MODEL={_os.getenv('ANTHROPIC_MODEL')}")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
