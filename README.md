@@ -1,23 +1,23 @@
 # OpenClaw Discord Bot
 
-OpenClaw Discord Bot is a local-first Discord assistant that sends inference requests to a configured model gateway.
+OpenClaw Discord Bot is a local-first Discord assistant that sends inference requests to Google AI Studio.
 It supports text and image workflows, channel-aware behavior, and persistent conversation memory. Later to be integrated with OpenClaw
 
 Pipeline:
-Discord -> Python Bot -> Model Gateway -> Model -> PostgreSQL Database -> Discord response.
+Discord -> Python Bot -> Google AI Studio -> PostgreSQL Database -> Discord response.
 
 ## Project Overview
 
 - Designed for Discord communities that want a self-hosted AI assistant.
-- Runs inference through a local or remote model gateway configured via environment variables.
+- Runs inference through Google AI Studio using a simple API key from the environment.
 - Maintains short-term context and long-term memory per channel.
 - Supports both conversational and image-based prompting.
 
 ## Core Capabilities
 
-- Chat with local or remote models via the configured gateway
+- Chat with Gemini models via Google AI Studio
 - Image understanding for common image formats
--- Gateway-selected model (no runtime switching from the bot)
+-- Model selected via the configured Google model setting (no runtime switching from the bot)
 - Channel-level AI enable/disable controls
 - Channel-specific assistant behavior modes
 - Persistent message history in PostgreSQL
@@ -35,7 +35,7 @@ Bot Runtime
   |-- Load context and summaries from PostgreSQL
   |-- Optional image attachment processing
   v
-Model Gateway
+Google AI Studio
   |
   v
 Configured Model
@@ -58,7 +58,7 @@ When users send messages in AI-enabled channels:
 
 1. Recent channel context is loaded.
 2. Long-term summary memory is injected for text conversations.
-3. The bot sends the request to the configured model gateway.
+3. The bot sends the request to Google AI Studio.
 4. The response is cleaned and posted back to Discord.
 5. Messages are persisted and periodically summarized.
 
@@ -70,10 +70,10 @@ For image requests, the bot prioritizes visual fidelity and avoids speculative a
 - `!addchn <channel_name>`: Enables AI for a channel
 - `!removechn <channel_name>`: Disables AI for a channel
 
-**Gateway Setup**
+**Model Setup**
 
-- **Env var:** set `API_GATEWAY_URL` to your gateway endpoint (e.g. `https://your-gateway.example/v1`). The bot reads this at runtime.
-- **Local gateway:** if you want a local inference gateway (LiteLLM) and an externally reachable URL, follow the LiteLLM + Cloudflare Tunnel guide in this repo: https://github.com/athxrvc/LiteLLM-setup
+- **Google AI Studio:** set `GOOGLE_API_KEY` (or `GOOGLE_AI_STUDIO_API_KEY`) and optionally `GOOGLE_MODEL` in your `.env` to use Gemini directly.
+- The bot uses Google AI Studio only; no gateway or local proxy is required.
 
 - `!addchn <channel_name>`: Enables AI for a channel
 - `!removechn <channel_name>`: Disables AI for a channel

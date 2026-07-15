@@ -2,7 +2,7 @@
 
 This module wires Discord events to the OpenClaw runtime: loading
 configuration, handling simple commands, preparing prompts, and
-calling the inference gateway through `llm.ask_model`.
+calling Google AI Studio through `llm.ask_model`.
 """
 
 import os
@@ -21,9 +21,10 @@ from db import save_message, load_recent_messages, ensure_channel
 from memory_manager import check_and_summarise, build_memory_context
 from llm import ask_model, clean_response, summarise_with_model
 
-# Log resolved gateway for debugging startup environment
+# Log resolved model configuration for debugging startup environment
 import os as _os
-print(f"Using API_GATEWAY_URL={_os.getenv('API_GATEWAY_URL')}")
+print(f"Using Google AI Studio model={_os.getenv('GOOGLE_MODEL') or 'gemini-2.0-flash'}")
+print(f"Google API key configured={bool(_os.getenv('GOOGLE_API_KEY') or _os.getenv('GOOGLE_AI_STUDIO_API_KEY'))}")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 

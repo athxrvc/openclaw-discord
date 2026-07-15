@@ -63,6 +63,6 @@ When a message is sent in an AI-enabled channel:
 
 ## Notes
 
-- Model selection is handled by the configured gateway; the bot does not switch models at runtime.
-- Gateway setup: to run a local inference gateway (LiteLLM) and expose it via Cloudflare Tunnel, see: https://github.com/athxrvc/LiteLLM-setup
+- Model selection is handled by the configured Google AI Studio model; the bot does not switch models at runtime.
+- No gateway setup is required; configure `GOOGLE_API_KEY` (or `GOOGLE_AI_STUDIO_API_KEY`) in your `.env` instead.
 - Persistent memory is channel-scoped through `channelCode`, with names resolved through the `Channel` table.
